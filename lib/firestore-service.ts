@@ -11,8 +11,17 @@ import {
   serverTimestamp,
   increment,
   Timestamp,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+
+export interface GoogleToolLink {
+  id: string;
+  title: string;
+  url: string;
+  type: "docs" | "sheets" | "drive" | "slides" | "meet" | "other";
+  createdAt?: any;
+}
 
 export interface Project {
   id: string;
@@ -167,3 +176,41 @@ export async function updateProjectAIOverview(
     updatedAt: serverTimestamp(),
   });
 }
+
+/**
+ * Fetch connected Google tools (Docs, Sheets, Drive, Meet, etc.)
+ */
+export async function getGoogleTools(uid: string, projectId: string): Promise<GoogleToolLink[]> {
+  const toolsRef = collection(db, "users", uid, "projects", projectId, "google_tools");
+  const q = query(toolsRef, orderBy("createdAt", "desc"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({
+    id: d.id,
+    ...(d.data() as Omit<GoogleToolLink, "id">),
+  }));
+}
+
+/**
+ * Connect a new Google tool/resource to the project
+ */
+export async function addGoogleTool(
+  uid: string,
+  projectId: string,
+  tool: { title: string; url: string; type: GoogleToolLink["type"] }
+): Promise<string> {
+  const toolsRef = collection(db, "users", uid, "projects", projectId, "google_tools");
+  const docRef = await addDoc(toolsRef, {
+    ...tool,
+    createdAt: serverTimestamp(),
+  });
+  return docRef.id;
+}
+
+/**
+ * Remove a connected Google tool
+ */
+export async function deleteGoogleTool(uid: string, projectId: string, toolId: string) {
+  const toolRef = doc(db, "users", uid, "projects", projectId, "google_tools", toolId);
+  await deleteDoc(toolRef);
+}
+

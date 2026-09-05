@@ -9,8 +9,12 @@ import {
   getDailyLogs,
   addDailyLog,
   updateProjectAIOverview,
+  getGoogleTools,
+  addGoogleTool,
+  deleteGoogleTool,
   Project,
   DailyLog,
+  GoogleToolLink,
 } from "@/lib/firestore-service";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +33,15 @@ import {
   TrendingUp,
   Bot,
   User as UserIcon,
+  FileText,
+  Sheet,
+  HardDrive,
+  Video,
+  Presentation,
+  Link2,
+  Trash2,
+  ExternalLink,
+  Plus,
 } from "lucide-react";
 
 export function ProjectViewClient({ projectId }: { projectId: string }) {
@@ -37,7 +50,15 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
 
   const [project, setProject] = useState<Project | null>(null);
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
+  const [googleTools, setGoogleTools] = useState<GoogleToolLink[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Google Tools form state
+  const [showAddTool, setShowAddTool] = useState(false);
+  const [toolTitle, setToolTitle] = useState("");
+  const [toolUrl, setToolUrl] = useState("");
+  const [toolType, setToolType] = useState<GoogleToolLink["type"]>("docs");
+  const [addingTool, setAddingTool] = useState(false);
 
   // Daily log form state
   const [logDate, setLogDate] = useState(new Date().toISOString().split("T")[0]);
@@ -72,12 +93,14 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
     if (!user) return;
     setLoading(true);
     try {
-      const [projData, logsData] = await Promise.all([
+      const [projData, logsData, toolsData] = await Promise.all([
         getProject(user.uid, projectId),
         getDailyLogs(user.uid, projectId),
+        getGoogleTools(user.uid, projectId),
       ]);
       setProject(projData);
       setDailyLogs(logsData);
+      setGoogleTools(toolsData);
     } catch (err) {
       console.error("Failed to load project details:", err);
     } finally {
@@ -190,6 +213,56 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
     }
   };
 
+  // Handle adding Google Tools (Docs, Sheets, Drive, Meet, etc.)
+  const handleAddTool = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !toolTitle.trim() || !toolUrl.trim()) return;
+    setAddingTool(true);
+    try {
+      await addGoogleTool(user.uid, projectId, {
+        title: toolTitle.trim(),
+        url: toolUrl.trim(),
+        type: toolType,
+      });
+      setToolTitle("");
+      setToolUrl("");
+      setShowAddTool(false);
+      const updated = await getGoogleTools(user.uid, projectId);
+      setGoogleTools(updated);
+    } catch (err) {
+      console.error("Failed to add Google tool:", err);
+    } finally {
+      setAddingTool(false);
+    }
+  };
+
+  const handleDeleteTool = async (toolId: string) => {
+    if (!user) return;
+    try {
+      await deleteGoogleTool(user.uid, projectId, toolId);
+      setGoogleTools((prev) => prev.filter((t) => t.id !== toolId));
+    } catch (err) {
+      console.error("Failed to delete Google tool:", err);
+    }
+  };
+
+  const getToolIcon = (type: GoogleToolLink["type"]) => {
+    switch (type) {
+      case "docs":
+        return <FileText className="h-4 w-4 text-blue-500" />;
+      case "sheets":
+        return <Sheet className="h-4 w-4 text-emerald-500" />;
+      case "drive":
+        return <HardDrive className="h-4 w-4 text-amber-500" />;
+      case "slides":
+        return <Presentation className="h-4 w-4 text-orange-500" />;
+      case "meet":
+        return <Video className="h-4 w-4 text-red-500" />;
+      default:
+        return <Link2 className="h-4 w-4 text-indigo-500" />;
+    }
+  };
+
   // Send Multi-turn chat message
   const handleSendChat = async (e?: React.FormEvent, customMsg?: string) => {
     if (e) e.preventDefault();
@@ -217,6 +290,7 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
             title: project?.title || "Project",
             description: project?.description,
             currentProgress: project?.overallProgress || 0,
+            connectedGoogleTools: googleTools.map((t) => `${t.type.toUpperCase()}: ${t.title} (${t.url})`),
           },
         }),
       });
@@ -384,6 +458,138 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
         <div className="grid gap-6 lg:grid-cols-12">
           {/* Left Column: Daily Work Tracker & Activity Timeline (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
+            {/* Connected Google Tools Card */}
+            <Card className="border-border/80 shadow-sm bg-card">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600">
+                      <Link2 className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-foreground">
+                        เครื่องมือ Google ที่เชื่อมโยง ({googleTools.length})
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        เชื่อมต่อ Google Docs, Sheets, Drive, Meet เพื่ออ้างอิงในการทำงานร่วมกับ AI
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddTool(!showAddTool)}
+                    className="text-xs gap-1 h-7"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {showAddTool ? "ปิดฟอร์ม" : "เชื่อมต่อเครื่องมือ"}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {showAddTool && (
+                  <form onSubmit={handleAddTool} className="p-3.5 rounded-xl bg-muted/40 border border-border/80 space-y-3 animate-in fade-in duration-150">
+                    <div className="grid gap-2.5 sm:grid-cols-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold">ประเภทเครื่องมือ</label>
+                        <select
+                          className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium focus:outline-none"
+                          value={toolType}
+                          onChange={(e) => setToolType(e.target.value as any)}
+                        >
+                          <option value="docs">📄 Google Docs</option>
+                          <option value="sheets">📊 Google Sheets</option>
+                          <option value="drive">📁 Google Drive</option>
+                          <option value="slides">📽️ Google Slides</option>
+                          <option value="meet">📹 Google Meet</option>
+                          <option value="other">🔗 อื่นๆ (URL)</option>
+                        </select>
+                      </div>
+                      <div className="sm:col-span-2 space-y-1">
+                        <label className="text-xs font-semibold">ชื่อเอกสารหรือเครื่องมือ *</label>
+                        <Input
+                          placeholder="เช่น PRD สเปกระบบ หรือ ชีตคำนวณต้นทุน"
+                          value={toolTitle}
+                          onChange={(e) => setToolTitle(e.target.value)}
+                          required
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold">ลิงก์ URL (เช่น https://docs.google.com/...) *</label>
+                      <Input
+                        type="url"
+                        placeholder="https://..."
+                        value={toolUrl}
+                        onChange={(e) => setToolUrl(e.target.value)}
+                        required
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAddTool(false)}
+                        className="h-7 text-xs"
+                      >
+                        ยกเลิก
+                      </Button>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={addingTool}
+                        className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        {addingTool ? "กำลังบันทึก..." : "ยืนยันการเชื่อมต่อ"}
+                      </Button>
+                    </div>
+                  </form>
+                )}
+
+                {googleTools.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border/80 p-3 text-center text-xs text-muted-foreground">
+                    ยังไม่มีเครื่องมือ Google ที่เชื่อมโยง — กด &quot;เชื่อมต่อเครื่องมือ&quot; เพื่อผูก Google Docs หรือ Sheets เข้ากับโปรเจกต์นี้
+                  </div>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {googleTools.map((t) => (
+                      <div
+                        key={t.id}
+                        className="flex items-center justify-between gap-2 p-2.5 rounded-lg border border-border/70 bg-background hover:border-blue-300 transition-colors text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {getToolIcon(t.type)}
+                          <div className="min-w-0">
+                            <a
+                              href={t.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-medium text-foreground hover:text-blue-600 hover:underline flex items-center gap-1 truncate"
+                            >
+                              <span className="truncate">{t.title}</span>
+                              <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
+                            </a>
+                            <span className="text-[10px] text-muted-foreground uppercase">{t.type}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTool(t.id)}
+                          className="text-muted-foreground hover:text-red-600 p-1 rounded transition-colors"
+                          title="ลบการเชื่อมต่อ"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Daily Check-in Form Card */}
             <Card className="border-border/80 shadow-sm">
               <CardHeader className="pb-3">

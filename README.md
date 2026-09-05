@@ -23,6 +23,10 @@
    - **Firebase Authentication**: ล็อกอินผ่าน Google Sign-In และ Email/Password
    - **User-isolated Cloud Firestore**: แยกจัดเก็บข้อมูลรายโครงการและบันทึกงานภายใต้ `users/{uid}` อย่างเคร่งครัด
    - **Google Cloud Secret Manager**: เก็บ `GEMINI_API_KEY` อย่างปลอดภัยระดับองค์กร
+5. **Google Workspace & Tools Connection:**
+   - เชื่อมโยงและอ้างอิงเครื่องมือของ Google ได้โดยตรงในพื้นที่โครงการ เช่น **Google Docs**, **Google Sheets**, **Google Drive**, **Google Meet**, และ **Google Slides**
+   - ทำงานร่วมกับ Gemini AI ในการวิเคราะห์บริบทงานที่อ้างอิงถึงเอกสารของ Google ได้อย่างราบรื่น
+
 
 ---
 
