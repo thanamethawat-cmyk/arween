@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: arween
+    ports:
+      - "5432:5432"
+    volumes:
+      - arween_pg_data:/var/lib/postgresql/data
+
+volumes:
+  arween_pg_data:

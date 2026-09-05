@@ -1,0 +1,666 @@
+"use client";
+
+import { useEffect, useState, useRef } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/auth-context";
+import {
+  getProject,
+  getDailyLogs,
+  addDailyLog,
+  updateProjectAIOverview,
+  Project,
+  DailyLog,
+} from "@/lib/firestore-service";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  ArrowLeft,
+  Sparkles,
+  Calendar,
+  Award,
+  CheckCircle2,
+  AlertTriangle,
+  Send,
+  RefreshCw,
+  TrendingUp,
+  Bot,
+  User as UserIcon,
+} from "lucide-react";
+
+export function ProjectViewClient({ projectId }: { projectId: string }) {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  const [project, setProject] = useState<Project | null>(null);
+  const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Daily log form state
+  const [logDate, setLogDate] = useState(new Date().toISOString().split("T")[0]);
+  const [logTitle, setLogTitle] = useState("");
+  const [logDetails, setLogDetails] = useState("");
+  const [logBlockers, setLogBlockers] = useState("");
+  const [progressIncrement, setProgressIncrement] = useState(5);
+  const [evaluatingWithAI, setEvaluatingWithAI] = useState(true);
+  const [submittingLog, setSubmittingLog] = useState(false);
+
+  // AI Summarizer state
+  const [summarizing, setSummarizing] = useState(false);
+
+  // Multi-turn AI Chat state
+  const [messages, setMessages] = useState<Array<{ role: "user" | "model"; text: string }>>([
+    {
+      role: "model",
+      text: "สวัสดีครับ! ผมคือ ARWEEN AI Operations Copilot มีอะไรให้ผมช่วยวิเคราะห์ วางแผน หรือตรวจสอบจุดติดขัดในโปรเจกต์นี้ไหมครับ?",
+    },
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [sendingChat, setSendingChat] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
+    }
+  }, [user, authLoading, router]);
+
+  const loadData = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const [projData, logsData] = await Promise.all([
+        getProject(user.uid, projectId),
+        getDailyLogs(user.uid, projectId),
+      ]);
+      setProject(projData);
+      setDailyLogs(logsData);
+    } catch (err) {
+      console.error("Failed to load project details:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user && projectId) {
+      loadData();
+    }
+  }, [user, projectId]);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Submit Daily Log & calculate progress
+  const handleSubmitLog = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !project || !logTitle.trim()) return;
+
+    setSubmittingLog(true);
+    try {
+      let meritScore = 5;
+      let aiRationale = "บันทึกการทำงานตามปกติ";
+      let actualIncrement = progressIncrement;
+
+      // 1. Call Gemini AI to evaluate log if enabled
+      if (evaluatingWithAI) {
+        const fullContent = `งานที่ทำ: ${logTitle}\nรายละเอียด: ${logDetails}\nอุปสรรค: ${logBlockers || "ไม่มี"}`;
+        const evalRes = await fetch("/api/ai/evaluate-log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectTitle: project.title,
+            logContent: fullContent,
+          }),
+        });
+
+        if (evalRes.ok) {
+          const evalData = await evalRes.json();
+          meritScore = evalData.meritScore;
+          aiRationale = evalData.rationale;
+          if (evalData.progressIncrement) {
+            actualIncrement = evalData.progressIncrement;
+          }
+        }
+      }
+
+      // 2. Save log and update overall project progress in Firestore
+      await addDailyLog(user.uid, projectId, {
+        date: logDate,
+        title: logTitle,
+        completedTasks: logDetails,
+        blockers: logBlockers,
+        progressContribution: actualIncrement,
+        meritScore,
+        aiRationale,
+      });
+
+      // Reset form
+      setLogTitle("");
+      setLogDetails("");
+      setLogBlockers("");
+
+      // Reload updated project & logs
+      await loadData();
+    } catch (err) {
+      console.error("Failed to submit daily log:", err);
+    } finally {
+      setSubmittingLog(false);
+    }
+  };
+
+  // Trigger Gemini AI Project Executive Summary Rollup
+  const handleSummarizeProject = async () => {
+    if (!user || !project || dailyLogs.length === 0) return;
+    setSummarizing(true);
+    try {
+      const res = await fetch("/api/ai/summarize-project", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectTitle: project.title,
+          projectDescription: project.description,
+          dailyLogs: dailyLogs.map((l) => ({
+            date: l.date,
+            summary: `${l.title}: ${l.completedTasks}`,
+            meritScore: l.meritScore,
+            blockers: l.blockers,
+          })),
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        await updateProjectAIOverview(
+          user.uid,
+          projectId,
+          data.executiveSummary,
+          data.recommendations || []
+        );
+        await loadData();
+      }
+    } catch (err) {
+      console.error("Failed to generate project summary:", err);
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
+  // Send Multi-turn chat message
+  const handleSendChat = async (e?: React.FormEvent, customMsg?: string) => {
+    if (e) e.preventDefault();
+    const textToSend = customMsg || chatInput;
+    if (!textToSend.trim() || sendingChat) return;
+
+    const newMessages = [...messages, { role: "user" as const, text: textToSend }];
+    setMessages(newMessages);
+    setChatInput("");
+    setSendingChat(true);
+
+    try {
+      const historyPayload = newMessages.slice(0, -1).map((m) => ({
+        role: m.role,
+        parts: [{ text: m.text }],
+      }));
+
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          history: historyPayload,
+          message: textToSend,
+          projectContext: {
+            title: project?.title || "Project",
+            description: project?.description,
+            currentProgress: project?.overallProgress || 0,
+          },
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setMessages((prev) => [...prev, { role: "model", text: data.reply }]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { role: "model", text: "ขออภัยครับ เกิดข้อผิดพลาดในการเชื่อมต่อกับ Gemini AI" },
+        ]);
+      }
+    } catch (err) {
+      console.error("Chat error:", err);
+      setMessages((prev) => [
+        ...prev,
+        { role: "model", text: "ขออภัยครับ ไม่สามารถส่งข้อความได้ในขณะนี้" },
+      ]);
+    } finally {
+      setSendingChat(false);
+    }
+  };
+
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/20">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+          <p className="text-sm font-medium text-muted-foreground">กำลังโหลดข้อมูลโครงการ...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <p className="text-muted-foreground mb-4">ไม่พบข้อมูลโครงการนี้</p>
+        <Link href="/">
+          <Button variant="outline">กลับสู่หน้าหลัก</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  const progress = project.overallProgress || 0;
+
+  return (
+    <div className="min-h-screen bg-slate-50/50 dark:bg-zinc-950 pb-12">
+      {/* Top Navigation */}
+      <div className="sticky top-0 z-20 border-b border-border/80 bg-background/90 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            กลับหน้าโครงการทั้งหมด
+          </Link>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+              {project.status === "COMPLETED" ? "โครงการสำเร็จแล้ว" : "กำลังดำเนินการ"}
+            </Badge>
+          </div>
+        </div>
+      </div>
+
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
+        {/* Project Overview Header Card */}
+        <Card className="border-border/80 shadow-sm bg-card overflow-hidden">
+          <CardContent className="p-6 sm:p-8 space-y-6">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+              <div className="space-y-2 max-w-3xl">
+                <div className="flex items-center gap-2.5">
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+                    {project.title}
+                  </h1>
+                </div>
+                {project.description && (
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {project.description}
+                  </p>
+                )}
+                {project.targetDate && (
+                  <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground font-medium pt-1">
+                    <Calendar className="h-3.5 w-3.5 text-blue-500" />
+                    <span>กำหนดส่งมอบ: {project.targetDate}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Merit Points & Stats Pill */}
+              <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 p-3 sm:p-0 rounded-xl bg-muted/40 sm:bg-transparent">
+                <div className="flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2 text-amber-700 dark:text-amber-300 font-bold text-sm">
+                  <Award className="h-5 w-5 text-amber-500" />
+                  <span>{project.totalMeritScore || 0} Merit Points</span>
+                </div>
+                <span className="text-xs text-muted-foreground">บันทึกงานแล้ว {dailyLogs.length} วัน</span>
+              </div>
+            </div>
+
+            {/* Direct Project Progress Rollup Bar */}
+            <div className="rounded-xl border border-blue-100 dark:border-blue-950 bg-blue-50/50 dark:bg-blue-950/20 p-4 space-y-2">
+              <div className="flex justify-between items-center text-sm font-bold">
+                <span className="text-blue-950 dark:text-blue-200 flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-blue-600" />
+                  ความคืบหน้าภาพรวมโครงการ (Progress Rollup)
+                </span>
+                <span className="text-lg text-blue-600 dark:text-blue-400 font-black">{progress}%</span>
+              </div>
+              <div className="h-3 w-full rounded-full bg-blue-200/60 dark:bg-blue-900/60 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ${
+                    progress >= 100
+                      ? "bg-green-500"
+                      : progress > 50
+                      ? "bg-blue-600"
+                      : "bg-amber-500"
+                  }`}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                * ข้อมูลความคืบหน้านี้คำนวณและอัปเดตแบบเรียลไทม์จากบันทึกงานประจำวัน (Daily Logs) ที่คุณส่งเข้ามา
+              </p>
+            </div>
+
+            {/* AI Executive Summary Box */}
+            <div className="rounded-xl border border-border/80 bg-background p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-foreground">
+                  <Sparkles className="h-4 w-4 text-blue-600 animate-pulse" />
+                  ภาพรวมโครงการวิเคราะห์โดย Gemini AI
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSummarizeProject}
+                  disabled={summarizing || dailyLogs.length === 0}
+                  className="h-7 text-xs gap-1.5"
+                >
+                  <RefreshCw className={`h-3 w-3 ${summarizing ? "animate-spin" : ""}`} />
+                  {summarizing ? "กำลังวิเคราะห์..." : "อัปเดตบทวิเคราะห์ AI"}
+                </Button>
+              </div>
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                {project.aiSummary || "ยังไม่มีบทวิเคราะห์ภาพรวม บันทึกการทำงานประจำวันแล้วกดปุ่มอัปเดตบทวิเคราะห์ AI"}
+              </p>
+              {project.keyBlockers && project.keyBlockers.length > 0 && (
+                <div className="pt-2 border-t border-border/60">
+                  <span className="text-xs font-semibold text-foreground">จุดติดขัดหรือคำแนะนำจาก AI:</span>
+                  <ul className="mt-1 list-disc list-inside text-xs text-muted-foreground space-y-0.5">
+                    {project.keyBlockers.map((blocker, idx) => (
+                      <li key={idx}>{blocker}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 2-Column Working Area */}
+        <div className="grid gap-6 lg:grid-cols-12">
+          {/* Left Column: Daily Work Tracker & Activity Timeline (7 cols) */}
+          <div className="lg:col-span-7 space-y-6">
+            {/* Daily Check-in Form Card */}
+            <Card className="border-border/80 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-bold flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-blue-600" />
+                  บันทึกการทำงานประจำวัน (Daily Check-in)
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  บันทึกความคืบหน้ารายวัน ข้อมูลจะถูกเชื่อมโยงและคำนวณเข้าสู่เปอร์เซ็นต์โครงการโดยตรง
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmitLog} className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold">วันที่บันทึก *</label>
+                      <Input
+                        type="date"
+                        value={logDate}
+                        onChange={(e) => setLogDate(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="sm:col-span-2 space-y-1">
+                      <label className="text-xs font-semibold">หัวข้องานสำคัญวันนี้ *</label>
+                      <Input
+                        placeholder="เช่น รีแฟกเตอร์ระบบ Auth และเชื่อม Firestore"
+                        value={logTitle}
+                        onChange={(e) => setLogTitle(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold">รายละเอียดงานและสิ่งที่ทำสำเร็จ</label>
+                    <Textarea
+                      placeholder="อธิบายสิ่งที่คุณได้ส่งมอบ, การแก้บั๊ก, หรือการช่วยเหลือทีม..."
+                      rows={3}
+                      value={logDetails}
+                      onChange={(e) => setLogDetails(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      อุปสรรคหรือปัญหาที่ติดขัด (Blockers - ถ้ามี)
+                    </label>
+                    <Input
+                      placeholder="เช่น รอ API Credential จากลูกค้า หรือติดปัญหา memory leak"
+                      value={logBlockers}
+                      onChange={(e) => setLogBlockers(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2 pt-1 items-center">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold">
+                        ความคืบหน้าที่เพิ่มให้โครงการ (+%)
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-ring"
+                        value={progressIncrement}
+                        onChange={(e) => setProgressIncrement(Number(e.target.value))}
+                      >
+                        <option value={3}>+3% (งานทั่วไป / อัปเดตย่อย)</option>
+                        <option value={5}>+5% (ส่งมอบงานตามแผน)</option>
+                        <option value={10}>+10% (งานสำคัญ / แก้ไขจุดวิกฤต)</option>
+                        <option value={15}>+15% (ส่งมอบ Milestone ใหญ่)</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-4 sm:pt-0">
+                      <input
+                        type="checkbox"
+                        id="evalAI"
+                        checked={evaluatingWithAI}
+                        onChange={(e) => setEvaluatingWithAI(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <label htmlFor="evalAI" className="text-xs text-muted-foreground cursor-pointer">
+                        ให้ <strong>Gemini AI</strong> ช่วยประเมิน Merit Score อัตโนมัติ
+                      </label>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium shadow"
+                    disabled={submittingLog}
+                  >
+                    {submittingLog ? "กำลังบันทึกและให้ AI ประเมิน..." : "บันทึกและเชื่อมโยงสู่ภาพรวมโครงการ"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            {/* Daily Activity Feed */}
+            <div className="space-y-3">
+              <h3 className="text-base font-bold text-foreground flex items-center justify-between">
+                <span>ประวัติการทำงานประจำวัน ({dailyLogs.length})</span>
+                <span className="text-xs font-normal text-muted-foreground">เรียงตามวันที่ล่าสุด</span>
+              </h3>
+
+              {dailyLogs.length === 0 ? (
+                <Card className="border-dashed p-8 text-center text-muted-foreground">
+                  ยังไม่มีบันทึกการทำงานประจำวัน เริ่มต้นบันทึกงานแรกของคุณด้านบน
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {dailyLogs.map((log) => (
+                    <Card key={log.id} className="border-border/80 hover:border-blue-300 transition-colors">
+                      <CardContent className="p-4 sm:p-5 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-bold text-foreground">
+                              {log.date}
+                            </span>
+                            <h4 className="text-sm font-bold text-foreground">{log.title}</h4>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[11px] bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border-blue-200">
+                              +{log.progressContribution}% ความคืบหน้า
+                            </Badge>
+                            <Badge className="bg-amber-500 text-white text-[11px] flex items-center gap-1 font-bold">
+                              <Award className="h-3 w-3" />
+                              {log.meritScore}/10 แต้ม
+                            </Badge>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-muted-foreground whitespace-pre-line leading-relaxed">
+                          {log.completedTasks}
+                        </p>
+
+                        {log.blockers && log.blockers !== "ไม่มี" && log.blockers !== "None" && (
+                          <div className="rounded-md bg-red-500/10 border border-red-500/20 p-2 text-xs text-red-700 dark:text-red-400 flex items-start gap-1.5">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                            <div>
+                              <strong className="font-semibold">อุปสรรค: </strong>
+                              <span>{log.blockers}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {log.aiRationale && (
+                          <div className="rounded-md bg-blue-50/60 dark:bg-blue-950/30 p-2 text-[11px] text-blue-900 dark:text-blue-200 flex items-start gap-1.5 border border-blue-100 dark:border-blue-900">
+                            <Sparkles className="h-3 w-3 text-blue-600 shrink-0 mt-0.5" />
+                            <div>
+                              <strong className="font-semibold">เหตุผลการประเมินจาก AI: </strong>
+                              <span>{log.aiRationale}</span>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column: ARWEEN Multi-turn AI Operations Copilot (5 cols) */}
+          <div className="lg:col-span-5 space-y-4">
+            <Card className="border-border/80 shadow-md sticky top-20 flex flex-col h-[680px]">
+              <CardHeader className="pb-3 border-b border-border/80 bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white shadow">
+                      <Bot className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-sm font-bold text-foreground">
+                        ARWEEN AI Operations Copilot
+                      </CardTitle>
+                      <CardDescription className="text-[11px]">
+                        Multi-turn interaction powered by Gemini
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200">
+                    Online
+                  </Badge>
+                </div>
+              </CardHeader>
+
+              {/* Chat Message List */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
+                {messages.map((m, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-start gap-2.5 ${
+                      m.role === "user" ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    {m.role === "model" && (
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white text-[10px] mt-0.5">
+                        <Bot className="h-3.5 w-3.5" />
+                      </div>
+                    )}
+                    <div
+                      className={`rounded-2xl px-3.5 py-2.5 max-w-[85%] leading-relaxed ${
+                        m.role === "user"
+                          ? "bg-blue-600 text-white rounded-tr-none font-medium"
+                          : "bg-muted/70 text-foreground border border-border/60 rounded-tl-none"
+                      }`}
+                    >
+                      <p className="whitespace-pre-line">{m.text}</p>
+                    </div>
+                    {m.role === "user" && (
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 dark:bg-zinc-800 text-foreground text-[10px] mt-0.5">
+                        <UserIcon className="h-3.5 w-3.5" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {sendingChat && (
+                  <div className="flex items-center gap-2 text-muted-foreground text-xs pl-8">
+                    <div className="h-2 w-2 rounded-full bg-blue-600 animate-bounce" />
+                    <div className="h-2 w-2 rounded-full bg-blue-600 animate-bounce delay-100" />
+                    <div className="h-2 w-2 rounded-full bg-blue-600 animate-bounce delay-200" />
+                    <span className="text-[11px]">Gemini กำลังคิดคำตอบ...</span>
+                  </div>
+                )}
+                <div ref={chatBottomRef} />
+              </div>
+
+              {/* Quick Prompts */}
+              <div className="px-3 py-1.5 border-t border-border/50 bg-background/50 flex gap-1.5 overflow-x-auto text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => handleSendChat(undefined, "ช่วยวิเคราะห์จุดติดขัด (Blockers) และแนะนำวิธีแก้ไขให้หน่อย")}
+                  className="shrink-0 rounded-full border border-border bg-muted/40 px-2.5 py-1 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                >
+                  🔍 วิเคราะห์จุดติดขัด
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendChat(undefined, "ช่วยวางแผนงานขั้นตอนถัดไปสำหรับโปรเจกต์นี้")}
+                  className="shrink-0 rounded-full border border-border bg-muted/40 px-2.5 py-1 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                >
+                  📋 แผนงานถัดไป
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendChat(undefined, "สรุปภาพรวมความคืบหน้าของโครงการนี้ให้หน่อย")}
+                  className="shrink-0 rounded-full border border-border bg-muted/40 px-2.5 py-1 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                >
+                  📊 สรุปความคืบหน้า
+                </button>
+              </div>
+
+              {/* Chat Input */}
+              <form onSubmit={handleSendChat} className="p-3 border-t border-border/80 bg-background flex gap-2">
+                <Input
+                  placeholder="พิมพ์ข้อความปรึกษา AI..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  disabled={sendingChat}
+                  className="text-xs h-9"
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={sendingChat || !chatInput.trim()}
+                  className="h-9 px-3 bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                </Button>
+              </form>
+            </Card>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

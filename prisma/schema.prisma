@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(cuid())
+  name           String
+  email          String          @unique
+  passwordHash   String?
+  emailVerified  DateTime?
+  role           UserRole        @default(MEMBER)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  memberships    ProjectMember[]
+  evidenceEvents EvidenceEvent[]
+  scores         Score[]
+  disputes       Dispute[]
+  invitesSent    ProjectInvite[] @relation("InvitesSent")
+}
+
+enum UserRole {
+  MEMBER
+  LEAD
+  ADMIN
+}
+
+model Project {
+  id            String          @id @default(cuid())
+  name          String
+  description   String?
+  status        ProjectStatus   @default(ACTIVE)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  members       ProjectMember[]
+  workItems     WorkItem[]
+  documents     DocumentRef[]
+  evidence      EvidenceEvent[]
+  notifications Notification[]
+  scores        Score[]
+  teamSummaries TeamSummary[]
+  disputes      Dispute[]
+  invites       ProjectInvite[]
+}
+
+model ProjectInvite {
+  id          String    @id @default(cuid())
+  token       String    @unique
+  projectId   String
+  email       String
+  role        String    @default("member")
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedBy   User      @relation("InvitesSent", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([projectId])
+}
+
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      String   @default("member")
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+model WorkItem {
+  id          String         @id @default(cuid())
+  projectId   String
+  title       String
+  description String?
+  status      WorkItemStatus @default(TODO)
+  assigneeId  String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+enum WorkItemStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  BLOCKED
+}
+
+model DocumentRef {
+  id        String   @id @default(cuid())
+  projectId String
+  title     String
+  url       String
+  addedById String?
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model EvidenceEvent {
+  id          String         @id @default(cuid())
+  projectId   String
+  actorId     String
+  action      String
+  source      EvidenceSource
+  occurredAt  DateTime       @default(now())
+  metadata    Json?
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor       User           @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  scores      Score[]
+}
+
+enum EvidenceSource {
+  WORK_ITEM
+  COMMENT
+  DOCUMENT
+  STATUS_UPDATE
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  projectId String
+  type      NotificationType
+  title     String
+  body      String
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+enum NotificationType {
+  WEEKLY_DIGEST
+  GAMING_FLAG
+  DISPUTE_PENDING
+}
+
+model Dispute {
+  id          String        @id @default(cuid())
+  projectId   String
+  userId      String
+  scoreId     String?
+  reason      String
+  status      DisputeStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  resolvedAt  DateTime?
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum DisputeStatus {
+  PENDING
+  RESOLVED
+  REJECTED
+}
+
+model Score {
+  id              String         @id @default(cuid())
+  projectId       String
+  userId          String
+  value           Int
+  reason          String
+  evidenceEventId String?
+  confirmed       Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  evidenceEvent   EvidenceEvent? @relation(fields: [evidenceEventId], references: [id])
+}
+
+model TeamSummary {
+  id          String   @id @default(cuid())
+  projectId   String
+  content     String
+  periodStart DateTime
+  periodEnd   DateTime
+  createdAt   DateTime @default(now())
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}

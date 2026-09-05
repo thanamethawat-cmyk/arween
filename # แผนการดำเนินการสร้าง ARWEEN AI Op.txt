@@ -1,0 +1,125 @@
+# แผนการดำเนินการสร้าง ARWEEN AI Operations App (Execution Plan & Strategic Rationale)
+
+เอกสารนี้ระบุแผนการสร้างและพัฒนา **ARWEEN App (Daily AI Operations & Project Tracking)** อย่างเป็นขั้นเป็นตอน พร้อมคำแนะนำและ **"เหตุผลรองรับ (Rationale)"** ในทุกการตัดสินใจ ทั้งด้านเทคโนโลยี สถาปัตยกรรม และการบริหารเวลา เพื่อให้มั่นใจว่าจะส่งประกวดบน Hack2Skill ได้ทันเวลาและได้คะแนนสูงสุด
+
+---
+
+## 1. การตัดสินใจเชิงสถาปัตยกรรมและเทคโนโลยี (Technology Stack & Rationale)
+
+| องค์ประกอบ (Component) | เทคโนโลยีที่เลือก | เหตุผลรองรับ (Rationale) |
+| :--- | :--- | :--- |
+| **Framework** | **Next.js 14 (App Router) + Tailwind CSS** | 1. โค้ดเบสเดิมของโปรเจกต์เป็น Next.js อยู่แล้ว ช่วยประหยัดเวลาเริ่มต้นจากศูนย์<br>2. รองรับ Full-stack (React Server Components + API Routes) ในโปรเจกต์เดียว ไม่ต้องแยก Repo หน้าบ้าน/หลังบ้าน<br>3. มีฟีเจอร์ `output: 'standalone'` ทำให้คอมไพล์เป็น Docker Image ขนาดเล็กพิเศษ เหมาะกับการรันบน Cloud Run |
+| **Authentication** | **Firebase Authentication** | 1. เป็น **เงื่อนไขบังคับ (Mandatory Rule)** ของการแข่งขัน<br>2. รองรับ Google Sign-In และ Email/Password ที่ปลอดภัยในระดับสากล ไม่ต้องเขียนระบบ Token หรือ Hash Password เอง<br>3. ทำงานร่วมกับ Firestore Security Rules ได้อย่างสมบูรณ์แบบโดยใช้ `request.auth.uid` |
+| **Database** | **Cloud Firestore** | 1. เป็น **เงื่อนไขบังคับ (Mandatory Rule)** ที่กรรมการตรวจในช่อง "User-isolated Firestore document storage"<br>2. NoSQL Document Model ยืดหยุ่นสูง เหมาะมากสำหรับข้อมูล Work Log, AI Chat History และ Metrics ที่มีโครงสร้างยืดหยุ่น<br>3. ไม่ต้องรัน Database Server (Serverless) ทำให้ไม่มีค่าใช้จ่ายคงที่และลดความเสี่ยงเรื่อง Connection Pool หลุด |
+| **AI Engine** | **Google Gemini 1.5 Flash (via Google AI Studio API)** | 1. เป็น **เงื่อนไขบังคับ (Mandatory Rule)** ของงานแข่ง<br>2. รุ่น `gemini-1.5-flash` มี Latency ต่ำมาก (ตอบสนองเร็ว) รองรับ Context Window ขนาดใหญ่ และราคาประหยัด<br>3. มีความสามารถด้าน Multi-turn conversation และ Structured Output (JSON Schema) ที่แม่นยำสูง เหมาะกับการวิเคราะห์งานและสกัดคะแนน |
+| **Security & Secrets** | **Google Cloud Secret Manager** | 1. เป็น **เงื่อนไขบังคับ (Mandatory Rule)** เพื่อความปลอดภัยระดับ Enterprise<br>2. ป้องกัน API Key หลุดลงใน Public Code Repository (ตามกติกาที่ต้องเปิด GitHub เป็นสาธารณะ)<br>3. Cloud Run สามารถดึง Secret มา Inject เป็น Environment Variable ได้โดยตรงอัตโนมัติ |
+| **Hosting & Deploy** | **Google Cloud Run (Serverless Container)** | 1. เป็น **แกนหลักของการแข่งขัน (#AccelerateAIWithCloudRun)**<br>2. สามารถ Scale-to-zero ได้ ประหยัดทรัพยากร และสเกลขึ้นทันทีเมื่อมีคนเข้ามาตรวจงาน<br>3. ให้ HTTPS URL สาธารณะอัตโนมัติทันทีที่ Deploy เสร็จ |
+
+---
+
+## 2. โมเดลข้อมูลและการแยกสิทธิ์ (Data Model & User Isolation)
+
+### เหตุผลรองรับการออกแบบ (Rationale)
+กรรมการมีเกณฑ์ตรวจ **"User-isolated Firestore document storage"** ดังนั้นโครงสร้างข้อมูลต้องถูก Scoped ภายใต้ UID ของผู้ใช้ เพื่อป้องกันไม่ให้ผู้ใช้คนอื่นเข้าถึงข้อมูลข้ามกันได้ และรองรับ Security Rules อย่างเข้มงวด:
+
+```
+users/{uid}
+  │
+  ├── profile/                        # ข้อมูลโปรไฟล์และสถิติรวม
+  │     └── info { name, email, totalMeritScore, activeProjectsCount }
+  │
+  └── projects/{projectId}             # รายการโครงการที่ผู้ใช้ดูแล/รับผิดชอบ
+        │
+        ├── metadata: {
+        │     title: string,
+        │     description: string,
+        │     status: "PLANNING" | "IN_PROGRESS" | "COMPLETED",
+        │     overallProgress: number (0-100),  // คำนวณจาก Daily Logs
+        │     aiSummary: string,                // Gemini สรุปภาพรวมสถานะโครงการ
+        │     keyBlockers: string[],            // จุดติดขัดที่ AI สกัดออกมาได้
+        │     updatedAt: timestamp
+        │   }
+        │
+        ├── daily_logs/{logId}         # การบันทึกงานประจำวัน (Daily Tracking)
+        │     ├── date: timestamp,
+        │     ├── summary: string,              // สรุปงานที่ทำ
+        │     ├── completedTasks: string[],     // สิ่งที่ทำเสร็จ
+        │     ├── progressContribution: number, // ความคืบหน้าที่เพิ่มขึ้น เช่น +5%
+        │     ├── blockers: string,             // ปัญหาหรืออุปสรรค
+        │     ├── meritScore: number (1-10),    // คะแนน Impact/Merit จาก Gemini
+        │     ├── aiRationale: string,          // เหตุผลประกอบคะแนน
+        │     └── createdAt: timestamp
+        │
+        └── conversations/{convId}     # ประวัติการคุยกับ AI แบบ Multi-turn
+              └── messages: [
+                    { role: "user" | "model", content: string, timestamp }
+                  ]
+```
+
+---
+
+## 3. แผนการดำเนินการ 5 ระยะ (5-Phase Execution Plan)
+
+### ระยะที่ 1: การเตรียม Infrastructure และ Dependencies (ชั่วโมงที่ 0 - 6)
+* **งานที่ต้องทำ**:
+  1. ติดตั้ง Firebase Client SDK (`firebase`) และ Gemini SDK (`@google/genai` หรือ `@google/generative-ai`)
+  2. สร้าง Firebase Project บน Firebase Console (เปิดใช้ Google Auth + Cloud Firestore)
+  3. ตั้งค่า Secret `GEMINI_API_KEY` ใน Google Cloud Secret Manager
+* **เหตุผลรองรับ**:
+  * การวาง Foundation ให้ถูกต้องตั้งแต่ชั่วโมงแรกจะป้องกันปัญหา Auth พังหรือ Database ติด Permission ในช่วงท้าย
+
+### ระยะที่ 2: ระบบ Authentication และ Daily Tracking (ชั่วโมงที่ 6 - 16)
+* **งานที่ต้องทำ**:
+  1. สร้างหน้า Login/Register ด้วย Firebase Auth (ปุ่ม One-click "Sign in with Google" และ Email/Password)
+  2. สร้าง Data Service ฝั่ง Firestore สำหรับ CRUD Projects และ Daily Logs
+  3. สร้างหน้า UI:
+     * **Project Overview Header**: แสดง Progress Bar รวม (0-100%), สถานะ, และปุ่มสรุปงาน
+     * **Daily Check-in Card**: แบบฟอร์มบันทึกงานประจำวัน (งานที่ทำ, อุปสรรค, ความคืบหน้า)
+     * **Daily Activity Timeline**: แสดงประวัติการทำงานย้อนหลังแยกตามวัน
+* **เหตุผลรองรับ**:
+  * นี่คือ **"คุณสมบัติสำคัญที่สุดที่ผู้ใช้ระบุ"** (Daily Logging ที่ผูกกับ Project Overview) เมื่อส่วนนี้ทำงานได้ ระบบจะมีแกนหลักทางธุรกิจที่สมบูรณ์ทันที
+
+### ระยะที่ 3: ระบบ Gemini Multi-turn Copilot & Impact Evaluator (ชั่วโมงที่ 16 - 28)
+* **งานที่ต้องทำ**:
+  1. สร้าง API Route `/api/ai/chat` ที่รองรับ Multi-turn interaction กับโมเดล `gemini-1.5-flash`
+  2. กำหนด **System Instruction ของ ARWEEN AI**:
+     * บทบาท: ผู้ช่วยบริหารงานอัจฉริยะ (Invisible AI Observer & Operations Copilot)
+     * หน้าที่ 1: ให้คำแนะนำแก้ปัญหาทางเทคนิคและอุปสรรคในการทำงาน (Multi-turn guidance)
+     * หน้าที่ 2: สกัดข้อมูลงานประจำวันออกมาเป็น Structured Data (Tasks, Blockers, Progress %)
+     * หน้าที่ 3: ประเมิน **Merit Score (1-10)** พร้อมให้เหตุผลโปร่งใสตามเกณฑ์ High Impact vs Routine Action
+  3. สร้างฟังก์ชัน **"Rollup to Project Overview"**: ให้ Gemini นำ Daily Logs ทั้งหมดมาสรุปเป็นภาพรวมโครงการ (Executive Summary) อัปเดตขึ้นหน้า Project Dashboard
+* **เหตุผลรองรับ**:
+  * งานแข่งกำหนดชัดเจนว่าต้องมี **"Multi-turn interaction with Gemini API"** การผสานแชท AI ให้ทำทั้งการตอบโต้และการประเมินงานจะทำให้กรรมการเห็นว่าไม่ใช่แค่ Chatbot ธรรมดา แต่เป็น Operations AI
+
+### ระยะที่ 4: การปรับแต่ง UI/UX และ Dashboard สรุปผล (ชั่วโมงที่ 28 - 36)
+* **งานที่ต้องทำ**:
+  1. จัดการ Layout หน้าจอให้สวยงาม ทันสมัย แบบ Modern Enterprise SaaS
+  2. เพิ่มหน้าปัดสถิติ (Merit Score Gauge, Daily Progress Chart, High-impact badges)
+  3. ทดสอบการทำงาน End-to-End บน Localhost
+* **เหตุผลรองรับ**:
+  * คณะกรรมการและผู้เข้าชมวิดีโอเดโมจะตัดสิน First Impression จาก UI ที่ดูโปร่งใส เข้าใจง่าย และดูเป็นแอปที่ใช้งานได้จริง (Production-ready)
+
+### ระยะที่ 5: Containerize, Deploy บน Cloud Run และจัดทำสื่อส่งประกวด (ชั่วโมงที่ 36 - 48)
+* **งานที่ต้องทำ**:
+  1. เขียน `Dockerfile` (Node Alpine, Multi-stage standalone build)
+  2. Build และ Deploy ขึ้น Google Cloud Run พร้อมผูก Secret Manager
+  3. ทดสอบ Live URL ของ Cloud Run ให้แน่ใจว่าเข้าได้ทั่วโลก
+  4. อัดคลิปวิดีโอ Walkthrough 2-3 นาที แสดงฟีเจอร์ Login -> บันทึกงานประจำวัน -> แชทกับ Gemini -> ดูผลกระทบต่อ Project Overview
+  5. โพสต์คลิปบน LinkedIn หรือ X พร้อมแฮชแท็ก `#AccelerateAIWithCloudRun`
+  6. กรอกแบบฟอร์มส่งงานบน Hack2Skill
+* **เหตุผลรองรับ**:
+  * ข้อบังคับของ Hack2Skill ต้องมีทั้ง Live URL บน Cloud Run, Public Git Repo, คลิปเดโม, และโพสต์ Social หากขาดข้อใดข้อหนึ่งจะตกคุณสมบัติทันที
+
+---
+
+## 4. คำแนะนำเชิงกลยุทธ์เพื่อให้ชนะใจกรรมการ (Strategic Recommendations)
+
+1. **การตั้งชื่อและ Positioning**:
+   * วางตัวเป็น **"ARWEEN: AI-Powered Daily Operations Tracker & Merit Workspace"** ชูสโลแกน *"Turn Invisible Daily Efforts into Tangible Project Success"*
+2. **การตอบคำถามในฟอร์ม Hack2Skill (Brief Description - 1,024 ตัวอักษร)**:
+   * ต้องเขียนให้กระชับและเอ่ยชื่อเทคโนโลยีทั้ง 4 ตัวอย่างชัดเจน:
+     > *"ARWEEN is an AI-powered operations workspace that connects daily developer contributions directly to overall project success. We leverage **Firebase Authentication** for secure user login, **User-isolated Cloud Firestore** to securely partition projects and daily logs per user, **Gemini 1.5 API** via Google AI Studio for interactive multi-turn copilot conversations and merit evaluations, and **Google Cloud Secret Manager** to safeguard API credentials—all containerized and deployed seamlessly on **Google Cloud Run**."*
+3. **การเตรียมตัวสำหรับ Demo Video**:
+   * เริ่มคลิปด้วย **Pain Point** (15 วินาที): "งานประจำวันของคนทำงานหนักมักถูกมองข้าม และภาพรวมโครงการมักอัปเดตช้ากว่าความเป็นจริง"
+   * นำเสนอ **Solution** (90 วินาที): ล็อกอิน -> บันทึกงานประจำวัน -> คุยกับ Gemini แบบ Multi-turn ให้ประเมินผลงาน -> เห็นเปอร์เซ็นต์โครงการและ Merit Score อัปเดตแบบเรียลไทม์
+   * ปิดท้ายด้วย **Tech Stack Architecture** (15 วินาที): สรุปการทำงานบน Google Cloud Run & Firebase
