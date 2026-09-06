@@ -3,20 +3,29 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
+import { translateFirebaseError } from "@/lib/firebase-errors";
+import { FIREBASE_CONFIG_MISSING_MESSAGE } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function LoginFormInner() {
   const router = useRouter();
-  const { signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
-  
+  const {
+    signInWithGoogle,
+    signInWithEmail,
+    signUpWithEmail,
+    firebaseReady,
+  } = useAuth();
+
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    firebaseReady ? "" : FIREBASE_CONFIG_MISSING_MESSAGE
+  );
 
   const handleGoogleSignIn = async () => {
     setError("");
@@ -24,8 +33,13 @@ export default function LoginFormInner() {
     try {
       await signInWithGoogle();
       router.push("/");
-    } catch (err: any) {
-      setError(err.message || "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } catch (err: unknown) {
+      setError(
+        translateFirebaseError(
+          err,
+          "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -42,16 +56,10 @@ export default function LoginFormInner() {
         await signInWithEmail(email, password);
       }
       router.push("/");
-    } catch (err: any) {
-      if (err.code === "auth/user-not-found" || err.code === "auth/wrong-password") {
-        setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
-      } else if (err.code === "auth/email-already-in-use") {
-        setError("อีเมลนี้ถูกใช้งานแล้ว กรุณาเข้าสู่ระบบ");
-      } else if (err.code === "auth/weak-password") {
-        setError("รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร");
-      } else {
-        setError(err.message || "เกิดข้อผิดพลาดในการเข้าสู่ระบบ");
-      }
+    } catch (err: unknown) {
+      setError(
+        translateFirebaseError(err, "เกิดข้อผิดพลาดในการเข้าสู่ระบบ")
+      );
     } finally {
       setLoading(false);
     }
@@ -82,13 +90,12 @@ export default function LoginFormInner() {
           </div>
         )}
 
-        {/* Google Sign In Button */}
         <Button
           type="button"
           variant="outline"
           className="w-full py-5 font-medium flex items-center justify-center gap-3 border-border hover:bg-muted transition-colors"
           onClick={handleGoogleSignIn}
-          disabled={loading}
+          disabled={loading || !firebaseReady}
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">
             <path
@@ -120,11 +127,12 @@ export default function LoginFormInner() {
           </span>
         </div>
 
-        {/* Email & Password Form */}
         <form onSubmit={handleEmailAuth} className="space-y-3">
           {isRegister && (
             <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">ชื่อ-นามสกุล หรือชื่อเล่น</label>
+              <label className="text-xs font-medium text-foreground">
+                ชื่อ-นามสกุล หรือชื่อเล่น
+              </label>
               <Input
                 type="text"
                 placeholder="เช่น สมชาย ใจดี"
@@ -157,8 +165,16 @@ export default function LoginFormInner() {
             />
           </div>
 
-          <Button type="submit" className="w-full py-5 bg-blue-600 hover:bg-blue-700 font-semibold text-white shadow" disabled={loading}>
-            {loading ? "กำลังดำเนินการ..." : isRegister ? "สร้างบัญชีผู้ใช้" : "เข้าสู่ระบบ"}
+          <Button
+            type="submit"
+            className="w-full py-5 bg-blue-600 hover:bg-blue-700 font-semibold text-white shadow"
+            disabled={loading || !firebaseReady}
+          >
+            {loading
+              ? "กำลังดำเนินการ..."
+              : isRegister
+              ? "สร้างบัญชีผู้ใช้"
+              : "เข้าสู่ระบบ"}
           </Button>
         </form>
 
@@ -168,7 +184,7 @@ export default function LoginFormInner() {
             className="text-xs text-blue-600 hover:underline dark:text-blue-400 font-medium"
             onClick={() => {
               setIsRegister(!isRegister);
-              setError("");
+              setError(firebaseReady ? "" : FIREBASE_CONFIG_MISSING_MESSAGE);
             }}
           >
             {isRegister

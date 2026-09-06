@@ -80,20 +80,45 @@ export async function createProject(
   uid: string,
   data: { title: string; description: string; targetDate?: string }
 ): Promise<string> {
-  const projectsRef = collection(db, "users", uid, "projects");
-  const docRef = await addDoc(projectsRef, {
-    title: data.title,
-    description: data.description,
-    targetDate: data.targetDate || "",
-    status: "IN_PROGRESS",
-    overallProgress: 0,
-    totalMeritScore: 0,
-    aiSummary: "โครงการเพิ่งเริ่มต้น บันทึกการทำงานประจำวันเพื่อให้ AI สรุปภาพรวมความคืบหน้า",
-    keyBlockers: [],
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+  const dbg = (hypothesisId: string, location: string, message: string, dataPayload: Record<string, unknown>) => {
+    // #region agent log
+    const payload = { sessionId: "be5c77", runId: "pre-fix", hypothesisId, location, message, data: dataPayload, timestamp: Date.now() };
+    fetch("http://127.0.0.1:7581/ingest/9b7a220c-b9c3-4adb-9125-b7121b9f895c", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "be5c77" }, body: JSON.stringify(payload) }).catch(() => {});
+    fetch("/api/debug-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
+    // #endregion
+  };
+  dbg("B", "lib/firestore-service.ts:createProject:start", "firestore addDoc start", {
+    uidLen: uid.length,
+    titleLen: data.title.trim().length,
   });
-  return docRef.id;
+  try {
+    const projectsRef = collection(db, "users", uid, "projects");
+    const docRef = await addDoc(projectsRef, {
+      title: data.title,
+      description: data.description,
+      targetDate: data.targetDate || "",
+      status: "IN_PROGRESS",
+      overallProgress: 0,
+      totalMeritScore: 0,
+      aiSummary: "โครงการเพิ่งเริ่มต้น บันทึกการทำงานประจำวันเพื่อให้ AI สรุปภาพรวมความคืบหน้า",
+      keyBlockers: [],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    dbg("B", "lib/firestore-service.ts:createProject:ok", "firestore addDoc ok", {
+      idLen: docRef.id.length,
+    });
+    return docRef.id;
+  } catch (err) {
+    dbg("D", "lib/firestore-service.ts:createProject:error", "firestore addDoc failed", {
+      code:
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code: unknown }).code)
+          : "",
+      msg: err instanceof Error ? err.message.slice(0, 160) : "unknown",
+    });
+    throw err;
+  }
 }
 
 /**

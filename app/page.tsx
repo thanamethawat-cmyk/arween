@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { getUserProjects, createProject, Project } from "@/lib/firestore-service";
+import { translateFirebaseError } from "@/lib/firebase-errors";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,8 +22,11 @@ export default function HomePage() {
   const [fetching, setFetching] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
 
-  // New project form state
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newTargetDate, setNewTargetDate] = useState("");
@@ -33,16 +37,39 @@ export default function HomePage() {
     }
   }, [user, loading, router]);
 
-  const loadProjects = async () => {
+  const loadProjects = async (opts?: { silent?: boolean }) => {
     if (!user) return;
-    setFetching(true);
+    const silent = Boolean(opts?.silent);
+    // #region agent log
+    const payload = { sessionId: "be5c77", runId: "post-fix", hypothesisId: "C", location: "app/page.tsx:loadProjects:start", message: "loadProjects called", data: { silent, uidLen: user.uid.length }, timestamp: Date.now() };
+    fetch("http://127.0.0.1:7581/ingest/9b7a220c-b9c3-4adb-9125-b7121b9f895c", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "be5c77" }, body: JSON.stringify(payload) }).catch(() => {});
+    fetch("/api/debug-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
+    // #endregion
+    if (!silent) setFetching(true);
     try {
       const data = await getUserProjects(user.uid);
       setProjects(data);
+      // #region agent log
+      const okPayload = { sessionId: "be5c77", runId: "post-fix", hypothesisId: "C", location: "app/page.tsx:loadProjects:ok", message: "loadProjects ok", data: { count: data.length, silent }, timestamp: Date.now() };
+      fetch("http://127.0.0.1:7581/ingest/9b7a220c-b9c3-4adb-9125-b7121b9f895c", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "be5c77" }, body: JSON.stringify(okPayload) }).catch(() => {});
+      fetch("/api/debug-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(okPayload) }).catch(() => {});
+      // #endregion
     } catch (err) {
       console.error("Failed to load projects:", err);
+      // #region agent log
+      const errPayload = { sessionId: "be5c77", runId: "post-fix", hypothesisId: "D", location: "app/page.tsx:loadProjects:error", message: "loadProjects failed", data: { code: err && typeof err === "object" && "code" in err ? String((err as { code: unknown }).code) : "", msg: err instanceof Error ? err.message.slice(0, 160) : "unknown" }, timestamp: Date.now() };
+      fetch("http://127.0.0.1:7581/ingest/9b7a220c-b9c3-4adb-9125-b7121b9f895c", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "be5c77" }, body: JSON.stringify(errPayload) }).catch(() => {});
+      fetch("/api/debug-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(errPayload) }).catch(() => {});
+      // #endregion
+      setFeedback({
+        type: "error",
+        message: translateFirebaseError(
+          err,
+          "โหลดรายการโครงการไม่สำเร็จ กรุณาลองใหม่"
+        ),
+      });
     } finally {
-      setFetching(false);
+      if (!silent) setFetching(false);
     }
   };
 
@@ -54,22 +81,80 @@ export default function HomePage() {
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !newTitle.trim()) return;
+    const dbg = (hypothesisId: string, location: string, message: string, data: Record<string, unknown>) => {
+      // #region agent log
+      const payload = { sessionId: "be5c77", runId: "post-fix", hypothesisId, location, message, data, timestamp: Date.now() };
+      fetch("http://127.0.0.1:7581/ingest/9b7a220c-b9c3-4adb-9125-b7121b9f895c", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "be5c77" }, body: JSON.stringify(payload) }).catch(() => {});
+      fetch("/api/debug-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
+      // #endregion
+    };
+    dbg("A", "app/page.tsx:handleCreateProject:entry", "create project submit", {
+      hasUser: Boolean(user),
+      uidLen: user?.uid?.length || 0,
+      titleLen: newTitle.trim().length,
+      creating,
+      fetching,
+    });
+    if (!user) {
+      dbg("A", "app/page.tsx:handleCreateProject:earlyReturn", "no user", {});
+      setFeedback({
+        type: "error",
+        message: "ยังไม่ได้เข้าสู่ระบบ กรุณาเข้าสู่ระบบก่อนสร้างโครงการ",
+      });
+      return;
+    }
+    if (!newTitle.trim()) {
+      dbg("A", "app/page.tsx:handleCreateProject:earlyReturn", "empty title", {
+        titleLen: 0,
+      });
+      setFeedback({
+        type: "error",
+        message: "กรุณากรอกชื่อโครงการก่อนบันทึก",
+      });
+      return;
+    }
     setCreating(true);
+    setFeedback(null);
     try {
+      dbg("B", "app/page.tsx:handleCreateProject:beforeCreate", "calling createProject", {
+        titleLen: newTitle.trim().length,
+      });
       const projectId = await createProject(user.uid, {
         title: newTitle,
         description: newDescription,
         targetDate: newTargetDate,
       });
+      dbg("B", "app/page.tsx:handleCreateProject:afterCreate", "createProject succeeded", {
+        projectIdLen: projectId?.length || 0,
+      });
       setNewTitle("");
       setNewDescription("");
       setNewTargetDate("");
       setShowCreateModal(false);
-      await loadProjects();
-      router.push(`/projects/${projectId}`);
+      dbg("C", "app/page.tsx:handleCreateProject:beforeReload", "reload projects silently (no full-page spinner)", {});
+      await loadProjects({ silent: true });
+      dbg("C", "app/page.tsx:handleCreateProject:afterReload", "loadProjects finished", {});
+      setFeedback({
+        type: "success",
+        message: "บันทึกโครงการแล้ว — กดการ์ดโครงการเพื่อเปิดทำงาน",
+      });
     } catch (err) {
+      dbg("D", "app/page.tsx:handleCreateProject:catch", "create project failed", {
+        code:
+          err && typeof err === "object" && "code" in err
+            ? String((err as { code: unknown }).code)
+            : "",
+        name: err instanceof Error ? err.name : "",
+        msg: err instanceof Error ? err.message.slice(0, 160) : "unknown",
+      });
       console.error("Create project failed:", err);
+      setFeedback({
+        type: "error",
+        message: translateFirebaseError(
+          err,
+          "สร้างโครงการไม่สำเร็จ กรุณาลองใหม่"
+        ),
+      });
     } finally {
       setCreating(false);
     }
@@ -103,11 +188,14 @@ export default function HomePage() {
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold tracking-tight text-foreground">ARWEEN</h1>
                 <Badge variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200">
-                  AI Operations
+                  Merit-to-Earn
                 </Badge>
               </div>
-              <p className="text-xs text-muted-foreground">
-                เชื่อมโยงการทำงานประจำวัน สู่ความสำเร็จภาพรวมของโครงการ
+              <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
+                Superior Operations Management Cycle
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                งานเบื้องหลังมีหลักฐาน — ประเมินโปร่งใสด้วย AI
               </p>
             </div>
           </div>
@@ -128,6 +216,18 @@ export default function HomePage() {
 
       {/* Main Content */}
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 space-y-6">
+        {feedback && (
+          <div
+            className={`rounded-lg border p-3 text-sm ${
+              feedback.type === "success"
+                ? "border-green-500/30 bg-green-500/10 text-green-800 dark:text-green-300"
+                : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400"
+            }`}
+          >
+            {feedback.message}
+          </div>
+        )}
+
         {/* Welcome Banner */}
         <div className="rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-600 p-6 sm:p-8 text-white shadow-xl shadow-blue-500/10 relative overflow-hidden">
           <div className="relative z-10 max-w-2xl space-y-2">
@@ -139,7 +239,7 @@ export default function HomePage() {
               สวัสดีคุณ {user.displayName || "ผู้ใช้"}
             </h2>
             <p className="text-sm sm:text-base text-blue-100/90 leading-relaxed">
-              ติดตามงานประจำวันของคุณ (Daily Progress) พร้อมเชื่อมโยงกับภาพรวมโครงการโดยตรง และให้ Gemini AI ช่วยวิเคราะห์คุณค่างาน (Merit Evaluation)
+              ติดตามงานในโปรเจกต์ส่วนรวม พร้อม Invisible AI Observer ที่ให้คะแนนแบบโปร่งใส (High Impact / Merit-to-Earn) เพื่อให้งานเบื้องหลังถูกมองเห็น
             </p>
           </div>
         </div>
@@ -172,6 +272,11 @@ export default function HomePage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleCreateProject} className="space-y-4">
+                {feedback?.type === "error" && showCreateModal && (
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-400">
+                    {feedback.message}
+                  </div>
+                )}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
                     <label className="text-xs font-semibold">ชื่อโครงการ *</label>
@@ -217,7 +322,7 @@ export default function HomePage() {
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                     disabled={creating}
                   >
-                    {creating ? "กำลังสร้าง..." : "บันทึกและเปิดโครงการ"}
+                    {creating ? "กำลังสร้าง..." : "บันทึกโครงการ"}
                   </Button>
                 </div>
               </form>

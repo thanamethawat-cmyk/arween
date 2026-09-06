@@ -1,84 +1,98 @@
-# ARWEEN — AI Operations & Daily Tracking App
-> **"Turn Daily Efforts into Tangible Project Success"**  
-> *แพลตฟอร์มผู้ช่วยบริหารงานอัจฉริยะ บันทึกและติดตามการทำงานประจำวัน เชื่อมโยงความคืบหน้าตรงสู่ภาพรวมโครงการ พร้อมระบบประเมินคุณค่างานด้วย Gemini AI*
+# ARWEEN: Superior Operations Management Cycle
 
-🚀 **Live Production URL:** [https://arween-app-619248313782.asia-southeast1.run.app](https://arween-app-619248313782.asia-southeast1.run.app)  
-🏷️ **Hackathon Challenge:** `#AccelerateAIWithCloudRun`
+> Turn invisible daily efforts into transparent project progress and fair merit recognition.
 
----
+**Hack2Skill / Gen AI Academy APAC — `#AccelerateAIWithCloudRun`**
 
-## 🌟 ฟีเจอร์หลัก (Key Features)
-
-1. **Daily Work Check-in & Progress Tracking (บันทึกงานประจำวัน):**
-   - บันทึกกิจกรรมที่ทำสำเร็จ, รายละเอียดงาน, และปัญหา/อุปสรรค (Blockers)
-   - ระบุเปอร์เซ็นต์ความคืบหน้าที่ต้องการเพิ่มให้โครงการ (+3%, +5%, +10%, +15%)
-2. **Real-time Project Progress Rollup (เชื่อมโยงสู่ภาพรวมโครงการโดยตรง):**
-   - ทุกบันทึกการทำงานรายวันจะถูกคำนวณและ Rollup ขึ้นเป็นเปอร์เซ็นต์ภาพรวมโครงการ (`Overall Project Progress %`) อัตโนมัติแบบเรียลไทม์
-   - หน้าแดชบอร์ดสรุปสถานะความคืบหน้ารวม พร้อมแสดง Activity Timeline ย้อนหลัง
-3. **ARWEEN Multi-turn AI Operations Copilot (Gemini 1.5 Flash):**
-   - สนทนาโต้ตอบต่อเนื่องแบบ **Multi-turn interaction** เพื่อวิเคราะห์งาน แนะนำแนวทางแก้ปัญหา และวางแผนก้าวถัดไป
-   - ระบบ **Merit-to-Earn Evaluation**: Gemini ช่วยวิเคราะห์ผลกระทบของงานและให้คะแนนความดี (Merit Score 1-10) พร้อมเหตุผลโปร่งใส
-   - **AI Executive Summary**: สังเคราะห์บันทึกงานทั้งหมดเป็นรายงานสรุปสถานะโครงการสำหรับผู้บริหาร
-4. **Enterprise Security & User Isolation:**
-   - **Firebase Authentication**: ล็อกอินผ่าน Google Sign-In และ Email/Password
-   - **User-isolated Cloud Firestore**: แยกจัดเก็บข้อมูลรายโครงการและบันทึกงานภายใต้ `users/{uid}` อย่างเคร่งครัด
-   - **Google Cloud Secret Manager**: เก็บ `GEMINI_API_KEY` อย่างปลอดภัยระดับองค์กร
-5. **Google Workspace & Tools Connection:**
-   - เชื่อมโยงและอ้างอิงเครื่องมือของ Google ได้โดยตรงในพื้นที่โครงการ เช่น **Google Docs**, **Google Sheets**, **Google Drive**, **Google Meet**, และ **Google Slides**
-   - ทำงานร่วมกับ Gemini AI ในการวิเคราะห์บริบทงานที่อ้างอิงถึงเอกสารของ Google ได้อย่างราบรื่น
-
+| | |
+|---|---|
+| **Live app (Cloud Run)** | https://arween-app-619248313782.asia-southeast1.run.app |
+| **Public repo** | https://github.com/thanamethawat-cmyk/arween |
+| **Region** | `asia-southeast1` |
 
 ---
 
-## 🏗️ สถาปัตยกรรมระบบ (Architecture)
+## What judges should click (4 steps)
+
+1. Open the Live URL → **Sign in** with Google or Email/Password.
+2. Create a project (or open an existing one).
+3. Add a **daily work log** → Gemini returns a **Merit Score (0–10)** with rationale.
+4. Use the **multi-turn AI chat** and optional **Google Docs / Sheets / Drive / Meet / Slides** links.
+
+If the page is empty after login, create one sample project and add 1–2 logs so scoring and chat have context.
+
+---
+
+## Problem
+
+Daily contributions (especially behind-the-scenes work) are hard to see. Managers score from memory; HR systems sit apart from the workspace. ARWEEN records project evidence, lets Gemini evaluate impact with an audit trail, and rolls progress into a live dashboard — humans still decide rewards.
+
+---
+
+## Architecture (submitted path)
 
 ```
-[ Client: Next.js 14 + Tailwind CSS ]
-         │
-         ├── Authentication ──> [ Firebase Auth (Google & Email) ]
-         │
-         ├── Database Storage ──> [ Cloud Firestore (User-isolated: users/{uid}) ]
-         │
-         ├── AI Engine ─────────> [ Google Gemini 1.5 Flash API (Multi-turn) ]
-         │
-         └── Secrets ───────────> [ Google Cloud Secret Manager (GEMINI_API_KEY) ]
-                                            │
-                                  [ Google Cloud Run (Container) ]
+[ Next.js 14 + Tailwind ]
+        │
+        ├── Auth ──────> Firebase Authentication (Google / Email)
+        ├── Data ──────> Cloud Firestore (user-isolated: users/{uid}/...)
+        ├── AI ────────> Google Gemini (multi-turn + merit evaluation)
+        └── Secrets ───> Google Cloud Secret Manager → Cloud Run
 ```
+
+### Mandatory checklist (implemented)
+
+- [x] User authentication via Firebase
+- [x] Multi-turn interaction with the Gemini API
+- [x] User-isolated Firestore document storage (`users/{uid}/projects/...`)
+- [x] Secure API key retrieval via Google Cloud Secret Manager
+
+### Not the submitted path
+
+This repository also contains an **experimental organization layer** (Prisma / PostgreSQL / NextAuth, invites, disputes). That code is **not** what is deployed on the Live URL. Judges should evaluate the **Firebase + Firestore + Gemini** path only.
 
 ---
 
-## 💻 วิธีการรันบนเครื่อง Local (Local Development)
+## Features (MVP)
 
-### 1. ติดตั้ง Dependencies
+1. Project workspace + daily logs (tasks, blockers, progress)
+2. Invisible AI Observer — Merit Score with transparent rationale
+3. Progress % and cumulative merit on the dashboard
+4. Team / project AI summary
+5. Google Workspace link hub (Docs, Sheets, Drive, Meet, Slides)
+6. Cloud Run deploy with Secret Manager for `GEMINI_API_KEY`
+
+---
+
+## Run locally
+
 ```bash
 npm install
-```
-
-### 2. ตั้งค่าตัวแปรใน `.env`
-คัดลอก `.env.example` ไปเป็น `.env` แล้วระบุค่าคอนฟิก:
-```env
-GEMINI_API_KEY="your-gemini-api-key"
-
-NEXT_PUBLIC_FIREBASE_API_KEY="your-firebase-api-key"
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="your-project.firebaseapp.com"
-NEXT_PUBLIC_FIREBASE_PROJECT_ID="your-project"
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="your-project.firebasestorage.app"
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="your-sender-id"
-NEXT_PUBLIC_FIREBASE_APP_ID="your-app-id"
-```
-
-### 3. เริ่มต้นรันโปรเจกต์
-```bash
+cp .env.example .env
+# Fill GEMINI_API_KEY and NEXT_PUBLIC_FIREBASE_*
 npm run dev
 ```
-เปิดบราวเซอร์ไปที่ `http://localhost:3000`
+
+Open http://localhost:3000
+
+### Environment
+
+```env
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.0-flash
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+```
+
+Never commit `.env`. Keep the Gemini API key only in Secret Manager for Cloud Run.
 
 ---
 
-## ☁️ การ Deploy ขึ้น Google Cloud Run
-
-โปรเจกต์นี้มี `Dockerfile` (Multi-stage Node.js 20 Alpine Standalone Build) ที่ผ่านการทดสอบและรองรับ Cloud Run 100%:
+## Deploy (Cloud Run)
 
 ```bash
 gcloud run deploy arween-app \
@@ -86,13 +100,27 @@ gcloud run deploy arween-app \
   --region asia-southeast1 \
   --platform managed \
   --allow-unauthenticated \
-  --set-secrets GEMINI_API_KEY=GEMINI_API_KEY:latest \
-  --project gen-lang-client-0084061289
+  --set-secrets GEMINI_API_KEY=GEMINI_API_KEY:latest
 ```
+
+Requires build-time Firebase public client vars (see `Dockerfile` / Cloud Build) and a Secret Manager secret named `GEMINI_API_KEY`.
 
 ---
 
-## 📄 ข้อมูลโครงการ
-* **โครงการ:** ARWEEN: Superior Operations Management Cycle
-* **ผู้พัฒนา:** ธณเมธาวัฒน์ ศรีพิทักษ์ (System Architect & AI Solution Designer)
-* **การแข่งขัน:** Hack2Skill Ideation Prototype Challenge (`#AccelerateAIWithCloudRun`)
+## Google AI Studio continuation
+
+This repo is the source of truth for importing into **Google AI Studio Build Mode** (Import from GitHub → iterate → Publish). Keep Firebase Auth, user-isolated Firestore, Gemini multi-turn, and Secret Manager. Do not replace this path with the older MeritSpace prototype.
+
+---
+
+## Product docs (Thai)
+
+- [Blueprint](docs/พิมพ์เขียว-ARWEEN.md)
+- [Platform status](docs/สถานะแพลตฟอร์ม.md)
+- [Master data](docs/ข้อมูลหลัก-ARWEEN.md)
+
+---
+
+## Author
+
+Thanamethawat Sriphithak — System Architect & AI Solution Designer

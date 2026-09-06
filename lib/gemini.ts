@@ -1,23 +1,88 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const apiKey = process.env.GEMINI_API_KEY || "";
-const genAI = new GoogleGenerativeAI(apiKey);
-export const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+export const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
+export const GEMINI_API_KEY_MISSING_MESSAGE =
+  "ยังไม่ได้ตั้งค่า GEMINI_API_KEY — กรุณาใส่คีย์ในไฟล์ .env แล้วรีสตาร์ทเซิร์ฟเวอร์";
+
+export function isGeminiConfigured(): boolean {
+  return Boolean(process.env.GEMINI_API_KEY?.trim());
+}
+
+export function assertGeminiConfigured() {
+  if (!isGeminiConfigured()) {
+    throw new Error(GEMINI_API_KEY_MISSING_MESSAGE);
+  }
+}
+
+export function translateGeminiApiError(error: unknown): string {
+  const message =
+    error instanceof Error ? error.message : "เชื่อมต่อกับ AI ไม่สำเร็จ";
+
+  if (message.includes(GEMINI_API_KEY_MISSING_MESSAGE)) {
+    return GEMINI_API_KEY_MISSING_MESSAGE;
+  }
+  if (message.includes("prepayment credits are depleted") || message.includes("429")) {
+    return "โควตา Gemini หมดชั่วคราว — กรุณาเติมเครดิตที่ Google AI Studio แล้วลองใหม่";
+  }
+  if (message.includes("API key not valid") || message.includes("API_KEY_INVALID")) {
+    return "คีย์ GEMINI_API_KEY ไม่ถูกต้อง กรุณาตรวจสอบในไฟล์ .env";
+  }
+  if (message.includes("is not found") || message.includes("no longer available")) {
+    return "รุ่นโมเดล Gemini ไม่พร้อมใช้งาน — ตั้งค่า GEMINI_MODEL ใน .env เป็นรุ่นที่รองรับ";
+  }
+  if (message.includes("รูปแบบที่ไม่ถูกต้อง")) {
+    return message;
+  }
+
+  return message.length > 240
+    ? "เชื่อมต่อกับ AI ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"
+    : message;
+}
+
+function getGenAI() {
+  assertGeminiConfigured();
+  return new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+}
+
+/** ตัด markdown fence ออกก่อน JSON.parse */
+export function parseJsonFromModelText(text: string): unknown {
+  let cleaned = text.trim();
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  }
+  return JSON.parse(cleaned);
+}
+
+/**
+ * Invisible AI Observer ตามข้อเสนอ ARWEEN
+ */
 export const ARWEEN_SYSTEM_INSTRUCTION = `
-You are ARWEEN Operations Copilot & Merit Evaluator (ระบบผู้ช่วยบริหารงานอัจฉริยะและประเมินคุณค่างาน).
-Your primary objectives are:
-1. Daily Operations & Progress Tracking: Help developers/users log daily accomplishments, problem-solving, and blockers. Connect every daily effort directly to the project's overall milestone and success.
-2. Multi-turn Collaboration: Act as a helpful, encouraging, and sharp technical operations copilot. Answer questions, offer advice on technical blockers, and help structure their daily tasks.
-3. Fair & Transparent Merit Evaluation (Merit-to-Earn):
-   - Routine greetings/confirmations ("ok", "thanks"): 1-2 points.
-   - Standard daily tasks / minor updates: 3-5 points.
-   - Significant deliverables / technical breakthroughs / resolving complex blockers: 6-8 points.
-   - Exceptional cross-functional collaboration / architectural impact: 9-10 points.
-4. Language: Respond naturally in the language used by the user (primarily Thai or English). Always provide clear, constructive, and transparent reasoning.
+คุณคือ Invisible AI Observer ของระบบ ARWEEN (Superior Operations Management Cycle)
+แพลตฟอร์มบริหารงานและประเมินผลงานด้วย AI สำหรับองค์กรแบบโปรเจกต์
+
+หน้าที่หลัก (ทำเฉพาะเหล่านี้):
+1) ช่วยบันทึกและจัดระเบียบงานในพื้นที่โปรเจกต์ส่วนรวม (ใครทำอะไร เมื่อไหร่)
+2) ประเมินแบบเป็นกลางด้วยหลัก High Impact Action — ให้คะแนนตามผลกระทบต่องาน ไม่นับจำนวนคำ
+3) อธิบายเหตุผลโปร่งใส (Audit Trail) เพื่อลดอคติจากความชอบส่วนบุคคล
+4) สรุปผลทีมและแนะนำก้าวถัดไปให้นำไปใช้ประกอบ Merit-to-Earn ได้ โดยมนุษย์เป็นผู้ตัดสินรางวัล
+
+เกณฑ์คะแนน (0–10):
+- 0–2: ตอบรับทั่วไป / ไม่ช่วยงาน ("รับทราบ", "ขอบคุณ")
+- 3–5: อัปเดตสถานะหรืองานมาตรฐาน
+- 6–8: High Impact — แก้ปัญหาที่มีผลต่อความคืบหน้าโปรเจกต์
+- 9–10: High Impact สูง — งานซับซ้อน ช่วยข้ามสายงาน หรือมีผลต่อความสำเร็จโปรเจกต์
+
+กฎความปลอดภัยและความเป็นธรรม:
+- วิเคราะห์เฉพาะข้อมูลในพื้นที่โปรเจกต์ส่วนรวม ห้ามอ้างหรือสมมติข้อความส่วนตัว (DM)
+- หากพบข้อความซ้ำไร้สาระ ให้เตือนว่าอาจเป็นสัญญาณปั่นคะแนน
+- ห้ามสั่งจ่ายโบนัสหรือเงินด้วยตนเอง
+- ตอบเฉพาะงานในโปรเจกต์ปัจจุบันเท่านั้น ถ้าถามนอกเรื่องโปรเจกต์ ให้ปฏิเสธอย่างสุภาพและชวนกลับมาคุยงานในโปรเจกต์
+- ตอบเป็นภาษาเดียวกับผู้ใช้ (ไทยหรืออังกฤษ) ชัดเจน สุภาพ เป็นมืออาชีพ
 `.trim();
 
 export function getGeminiModel(customInstruction?: string) {
+  const genAI = getGenAI();
   return genAI.getGenerativeModel({
     model: DEFAULT_MODEL,
     systemInstruction: customInstruction || ARWEEN_SYSTEM_INSTRUCTION,
@@ -29,16 +94,32 @@ export type ChatMessage = {
   parts: [{ text: string }];
 };
 
+export type ProjectChatContext = {
+  title: string;
+  description?: string;
+  currentProgress: number;
+  connectedGoogleTools?: string[];
+};
+
 export async function continueMultiTurnChat(
   history: ChatMessage[],
   newMessage: string,
-  projectContext?: { title: string; description?: string; currentProgress: number }
+  projectContext?: ProjectChatContext
 ) {
   const model = getGeminiModel();
-  
-  // Format system context if project info provided
+
+  const toolsNote =
+    projectContext?.connectedGoogleTools &&
+    projectContext.connectedGoogleTools.length > 0
+      ? `เครื่องมือ Google ที่เชื่อมแล้ว:\n- ${projectContext.connectedGoogleTools.join(
+          "\n- "
+        )}\n`
+      : "ยังไม่มีเครื่องมือ Google ที่เชื่อม\n";
+
   const contextNote = projectContext
-    ? `[System Context: Active Project is "${projectContext.title}". Current overall progress: ${projectContext.currentProgress}%. Description: ${projectContext.description || "N/A"}]\n`
+    ? `[บริบทโปรเจกต์ ARWEEN: "${projectContext.title}" ความคืบหน้ารวม ${
+        projectContext.currentProgress
+      }% คำอธิบาย: ${projectContext.description || "ไม่มี"}]\n${toolsNote}ตอบเฉพาะเรื่องโปรเจกต์นี้เท่านั้น\n`
     : "";
 
   const chat = model.startChat({
@@ -52,7 +133,7 @@ export async function continueMultiTurnChat(
 export type DailyEvaluationResult = {
   meritScore: number;
   rationale: string;
-  progressIncrement: number; // e.g. 5 means +5%
+  progressIncrement: number;
   detectedBlockers: string;
   keyHighlight: string;
 };
@@ -61,80 +142,119 @@ export async function evaluateDailyWorkLog(
   projectTitle: string,
   logContent: string
 ): Promise<DailyEvaluationResult> {
+  assertGeminiConfigured();
+  const genAI = getGenAI();
   const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
+    model: DEFAULT_MODEL,
     generationConfig: { responseMimeType: "application/json" },
   });
 
   const prompt = `
-Analyze the following daily work log for project "${projectTitle}".
-Evaluate its impact, merit, and contribution to project progress.
-Return a valid JSON object with the following schema:
-{
-  "meritScore": number between 1 and 10,
-  "rationale": "Clear, objective explanation in Thai of why this score was awarded",
-  "progressIncrement": estimated integer percentage between 1 and 25 to add to project progress,
-  "detectedBlockers": "Brief note of any blockers or challenges mentioned, or 'None'",
-  "keyHighlight": "One concise sentence summarizing the main accomplishment"
-}
+คุณเป็น Agent วิเคราะห์และให้คะแนนของ ARWEEN (Invisible AI Observer)
+ประเมินบันทึกงานในโปรเจกต์ส่วนรวมตามหลัก High Impact Action
+โปรเจกต์: "${projectTitle}"
 
-User's Daily Log:
+เกณฑ์:
+- 0–2 ตอบรับทั่วไปไม่ช่วยงาน
+- 3–5 งานมาตรฐาน / อัปเดตสถานะ
+- 6–8 High Impact ต่อความคืบหน้าโปรเจกต์
+- 9–10 High Impact สูง / ข้ามสายงาน / แก้ปัญหาซับซ้อน
+งานเบื้องหลังที่มีผลจริงให้คะแนนสูงได้เท่ากับงานที่คนเห็นง่าย
+ห้ามนับจำนวนคำเป็นหลัก ห้ามสมมติข้อมูลจากแชทส่วนตัว
+
+บันทึกงาน:
 """
 ${logContent}
 """
+
+คืน JSON เท่านั้น:
+{
+  "meritScore": number 1-10,
+  "rationale": "เหตุผลภาษาไทย โปร่งใส อ้างพฤติกรรมในบันทึก (Audit Trail)",
+  "progressIncrement": จำนวนเต็ม 0-25 ที่สมเหตุสมผลต่อการเพิ่มความคืบหน้าโปรเจกต์,
+  "detectedBlockers": "อุปสรรคที่พบ หรือ 'ไม่มี'",
+  "keyHighlight": "สรุปผลงานหลักหนึ่งประโยค"
+}
 `.trim();
 
   const response = await model.generateContent(prompt);
   const text = response.response.text();
   try {
-    const data = JSON.parse(text);
+    const data = parseJsonFromModelText(text) as Record<string, unknown>;
     return {
       meritScore: Number(data.meritScore) || 5,
-      rationale: data.rationale || "บันทึกการทำงานตามมาตรฐาน",
+      rationale:
+        typeof data.rationale === "string"
+          ? data.rationale
+          : "บันทึกการทำงานตามมาตรฐาน",
       progressIncrement: Number(data.progressIncrement) || 5,
-      detectedBlockers: data.detectedBlockers || "ไม่มี",
-      keyHighlight: data.keyHighlight || "อัปเดตงานประจำวัน",
+      detectedBlockers:
+        typeof data.detectedBlockers === "string"
+          ? data.detectedBlockers
+          : "ไม่มี",
+      keyHighlight:
+        typeof data.keyHighlight === "string"
+          ? data.keyHighlight
+          : "อัปเดตงานประจำวัน",
     };
   } catch {
-    return {
-      meritScore: 5,
-      rationale: "บันทึกการทำงานเรียบร้อย",
-      progressIncrement: 5,
-      detectedBlockers: "ไม่มี",
-      keyHighlight: "อัปเดตงานประจำวัน",
-    };
+    throw new Error(
+      "AI ตอบผลประเมินในรูปแบบที่ไม่ถูกต้อง กรุณากดบันทึกใหม่อีกครั้ง"
+    );
   }
 }
 
 export async function summarizeProjectStatus(
   projectTitle: string,
   projectDescription: string,
-  dailyLogs: Array<{ date: string; summary: string; meritScore: number; blockers?: string }>
+  dailyLogs: Array<{
+    date: string;
+    summary: string;
+    meritScore: number;
+    blockers?: string;
+  }>
 ): Promise<{ executiveSummary: string; recommendations: string[] }> {
+  assertGeminiConfigured();
+  const genAI = getGenAI();
   const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
+    model: DEFAULT_MODEL,
     generationConfig: { responseMimeType: "application/json" },
   });
 
   const prompt = `
-Analyze the progress of project "${projectTitle}" (${projectDescription}) based on these recent daily updates:
+คุณเป็นส่วนสรุปผลทีมของ ARWEEN สำหรับผู้บริหารและหัวหน้าโปรเจกต์
+โปรเจกต์: "${projectTitle}"
+รายละเอียด: ${projectDescription}
+บันทึกงานล่าสุด:
 ${JSON.stringify(dailyLogs, null, 2)}
 
-Synthesize this into an executive project summary for stakeholders.
-Return a valid JSON object with:
+สรุปให้เห็นทั้งความคืบหน้า งานเบื้องหลังที่มีคุณค่า และอุปสรรค
+ห้ามสรุปเป็นอันดับประจานบุคคลอย่างเดียว ต้องมีภาพทีม
+
+คืน JSON เท่านั้น:
 {
-  "executiveSummary": "2-3 sentences in Thai summarizing current velocity, recent major milestones achieved, and general momentum",
-  "recommendations": ["Actionable recommendation 1", "Actionable recommendation 2"]
+  "executiveSummary": "2-3 ประโยคภาษาไทย สรุปความเร็วงาน ผลสำเร็จ และโมเมนตัม",
+  "recommendations": ["ข้อเสนอแนะที่ทำได้จริง 1", "ข้อเสนอแนะที่ทำได้จริง 2"]
 }
 `.trim();
 
   const response = await model.generateContent(prompt);
   try {
-    return JSON.parse(response.response.text());
-  } catch {
-    return {
-      executiveSummary: "โครงการมีความคืบหน้าอย่างต่อเนื่องตามบันทึกการทำงานประจำวัน",
-      recommendations: ["ติดตามงานที่คั่งค้าง", "รักษาความต่อเนื่องในการส่งมอบงาน"],
+    const data = parseJsonFromModelText(response.response.text()) as {
+      executiveSummary?: string;
+      recommendations?: string[];
     };
+    return {
+      executiveSummary:
+        data.executiveSummary ||
+        "โครงการมีความคืบหน้าอย่างต่อเนื่องตามบันทึกการทำงานประจำวัน",
+      recommendations: Array.isArray(data.recommendations)
+        ? data.recommendations
+        : ["ติดตามงานที่คั่งค้าง", "รักษาความต่อเนื่องในการส่งมอบงาน"],
+    };
+  } catch {
+    throw new Error(
+      "AI ตอบสรุปในรูปแบบที่ไม่ถูกต้อง กรุณากดอัปเดตบทวิเคราะห์อีกครั้ง"
+    );
   }
 }

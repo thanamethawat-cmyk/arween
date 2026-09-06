@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { summarizeProjectStatus } from "@/lib/gemini";
+import {
+  summarizeProjectStatus,
+  isGeminiConfigured,
+  GEMINI_API_KEY_MISSING_MESSAGE,
+  translateGeminiApiError,
+} from "@/lib/gemini";
 
 export async function POST(req: NextRequest) {
   try {
+    if (!isGeminiConfigured()) {
+      return NextResponse.json(
+        { error: GEMINI_API_KEY_MISSING_MESSAGE },
+        { status: 503 }
+      );
+    }
+
     const { projectTitle, projectDescription, dailyLogs } = await req.json();
 
     if (!projectTitle) {
-      return NextResponse.json({ error: "projectTitle is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "ต้องระบุชื่อโครงการ" },
+        { status: 400 }
+      );
     }
 
     const summary = await summarizeProjectStatus(
@@ -16,10 +31,10 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json(summary);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("AI Project Summarizer Error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to summarize project" },
+      { error: translateGeminiApiError(error) },
       { status: 500 }
     );
   }

@@ -6,8 +6,9 @@ import { Providers } from "@/components/providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "ARWEEN — ระบบบริหารงานและประเมินทีม",
-  description: "รวบรวมหลักฐาน แจ้งเตือน อำนวยความสะดวก ประเมินแบบเป็นกลาง",
+  title: "ARWEEN — Superior Operations Management Cycle",
+  description:
+    "พื้นที่ทำงานอัจฉริยะและประเมินผลด้วย AI — Invisible AI Observer, High Impact Action, Merit-to-Earn",
 };
 
 export default function RootLayout({

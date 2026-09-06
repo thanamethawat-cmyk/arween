@@ -16,6 +16,7 @@ import {
   DailyLog,
   GoogleToolLink,
 } from "@/lib/firestore-service";
+import { translateFirebaseError } from "@/lib/firebase-errors";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,8 @@ import {
   Plus,
 } from "lucide-react";
 
+type Feedback = { type: "success" | "error"; message: string } | null;
+
 export function ProjectViewClient({ projectId }: { projectId: string }) {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -52,15 +55,15 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
   const [googleTools, setGoogleTools] = useState<GoogleToolLink[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState("");
 
-  // Google Tools form state
   const [showAddTool, setShowAddTool] = useState(false);
   const [toolTitle, setToolTitle] = useState("");
   const [toolUrl, setToolUrl] = useState("");
   const [toolType, setToolType] = useState<GoogleToolLink["type"]>("docs");
   const [addingTool, setAddingTool] = useState(false);
+  const [toolFeedback, setToolFeedback] = useState<Feedback>(null);
 
-  // Daily log form state
   const [logDate, setLogDate] = useState(new Date().toISOString().split("T")[0]);
   const [logTitle, setLogTitle] = useState("");
   const [logDetails, setLogDetails] = useState("");
@@ -68,15 +71,17 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
   const [progressIncrement, setProgressIncrement] = useState(5);
   const [evaluatingWithAI, setEvaluatingWithAI] = useState(true);
   const [submittingLog, setSubmittingLog] = useState(false);
+  const [logFeedback, setLogFeedback] = useState<Feedback>(null);
 
-  // AI Summarizer state
   const [summarizing, setSummarizing] = useState(false);
+  const [summaryFeedback, setSummaryFeedback] = useState<Feedback>(null);
 
-  // Multi-turn AI Chat state
-  const [messages, setMessages] = useState<Array<{ role: "user" | "model"; text: string }>>([
+  const [messages, setMessages] = useState<
+    Array<{ role: "user" | "model"; text: string }>
+  >([
     {
       role: "model",
-      text: "สวัสดีครับ! ผมคือ ARWEEN AI Operations Copilot มีอะไรให้ผมช่วยวิเคราะห์ วางแผน หรือตรวจสอบจุดติดขัดในโปรเจกต์นี้ไหมครับ?",
+      text: "สวัสดีครับ ผมคือ Invisible AI Observer ของ ARWEEN ช่วยบันทึกงานในโปรเจกต์ส่วนรวม ประเมินแบบเป็นกลางด้วยหลัก High Impact และสรุปผลทีมให้นำไปใช้ประกอบ Merit-to-Earn ได้ ถามได้เฉพาะงานในโปรเจกต์นี้ครับ",
     },
   ]);
   const [chatInput, setChatInput] = useState("");
@@ -92,6 +97,7 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
   const loadData = async () => {
     if (!user) return;
     setLoading(true);
+    setPageError("");
     try {
       const [projData, logsData, toolsData] = await Promise.all([
         getProject(user.uid, projectId),
@@ -103,6 +109,9 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
       setGoogleTools(toolsData);
     } catch (err) {
       console.error("Failed to load project details:", err);
+      setPageError(
+        translateFirebaseError(err, "โหลดข้อมูลโครงการไม่สำเร็จ กรุณาลองใหม่")
+      );
     } finally {
       setLoading(false);
     }
@@ -118,18 +127,17 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Submit Daily Log & calculate progress
   const handleSubmitLog = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !project || !logTitle.trim()) return;
 
     setSubmittingLog(true);
+    setLogFeedback(null);
     try {
       let meritScore = 5;
-      let aiRationale = "บันทึกการทำงานตามปกติ";
+      let aiRationale = "บันทึกการทำงานตามปกติ (ไม่ได้ใช้ AI ประเมิน)";
       let actualIncrement = progressIncrement;
 
-      // 1. Call Gemini AI to evaluate log if enabled
       if (evaluatingWithAI) {
         const fullContent = `งานที่ทำ: ${logTitle}\nรายละเอียด: ${logDetails}\nอุปสรรค: ${logBlockers || "ไม่มี"}`;
         const evalRes = await fetch("/api/ai/evaluate-log", {
@@ -141,17 +149,30 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
           }),
         });
 
-        if (evalRes.ok) {
-          const evalData = await evalRes.json();
-          meritScore = evalData.meritScore;
-          aiRationale = evalData.rationale;
-          if (evalData.progressIncrement) {
-            actualIncrement = evalData.progressIncrement;
-          }
+        const evalBody = await evalRes.json().catch(() => ({}));
+
+        if (!evalRes.ok) {
+          setLogFeedback({
+            type: "error",
+            message:
+              (evalBody as { error?: string }).error ||
+              "AI ประเมินไม่สำเร็จ — ยังไม่บันทึกงาน กรุณาลองใหม่",
+          });
+          return;
+        }
+
+        const evalData = evalBody as {
+          meritScore?: number;
+          rationale?: string;
+          progressIncrement?: number;
+        };
+        meritScore = Number(evalData.meritScore) || 5;
+        aiRationale = evalData.rationale || "บันทึกการทำงานตามมาตรฐาน";
+        if (evalData.progressIncrement != null) {
+          actualIncrement = Number(evalData.progressIncrement) || actualIncrement;
         }
       }
 
-      // 2. Save log and update overall project progress in Firestore
       await addDailyLog(user.uid, projectId, {
         date: logDate,
         title: logTitle,
@@ -162,24 +183,34 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
         aiRationale,
       });
 
-      // Reset form
       setLogTitle("");
       setLogDetails("");
       setLogBlockers("");
-
-      // Reload updated project & logs
+      setLogFeedback({
+        type: "success",
+        message: evaluatingWithAI
+          ? `บันทึกงานแล้ว — คะแนน ${meritScore}/10`
+          : "บันทึกงานแล้ว (ไม่ได้ใช้ AI ประเมิน)",
+      });
       await loadData();
     } catch (err) {
       console.error("Failed to submit daily log:", err);
+      setLogFeedback({
+        type: "error",
+        message: translateFirebaseError(
+          err,
+          "บันทึกงานไม่สำเร็จ กรุณาลองใหม่"
+        ),
+      });
     } finally {
       setSubmittingLog(false);
     }
   };
 
-  // Trigger Gemini AI Project Executive Summary Rollup
   const handleSummarizeProject = async () => {
     if (!user || !project || dailyLogs.length === 0) return;
     setSummarizing(true);
+    setSummaryFeedback(null);
     try {
       const res = await fetch("/api/ai/summarize-project", {
         method: "POST",
@@ -196,32 +227,59 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        await updateProjectAIOverview(
-          user.uid,
-          projectId,
-          data.executiveSummary,
-          data.recommendations || []
-        );
-        await loadData();
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setSummaryFeedback({
+          type: "error",
+          message:
+            (data as { error?: string }).error ||
+            "อัปเดตบทวิเคราะห์ไม่สำเร็จ — สรุปเดิมยังคงอยู่",
+        });
+        return;
       }
+
+      await updateProjectAIOverview(
+        user.uid,
+        projectId,
+        (data as { executiveSummary: string }).executiveSummary,
+        (data as { recommendations?: string[] }).recommendations || []
+      );
+      await loadData();
+      setSummaryFeedback({
+        type: "success",
+        message: "อัปเดตบทวิเคราะห์ AI แล้ว",
+      });
     } catch (err) {
       console.error("Failed to generate project summary:", err);
+      setSummaryFeedback({
+        type: "error",
+        message: "อัปเดตบทวิเคราะห์ไม่สำเร็จ — สรุปเดิมยังคงอยู่",
+      });
     } finally {
       setSummarizing(false);
     }
   };
 
-  // Handle adding Google Tools (Docs, Sheets, Drive, Meet, etc.)
   const handleAddTool = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !toolTitle.trim() || !toolUrl.trim()) return;
+
+    const url = toolUrl.trim();
+    if (!url.startsWith("https://")) {
+      setToolFeedback({
+        type: "error",
+        message: "ลิงก์ต้องขึ้นต้นด้วย https://",
+      });
+      return;
+    }
+
     setAddingTool(true);
+    setToolFeedback(null);
     try {
       await addGoogleTool(user.uid, projectId, {
         title: toolTitle.trim(),
-        url: toolUrl.trim(),
+        url,
         type: toolType,
       });
       setToolTitle("");
@@ -229,8 +287,19 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
       setShowAddTool(false);
       const updated = await getGoogleTools(user.uid, projectId);
       setGoogleTools(updated);
+      setToolFeedback({
+        type: "success",
+        message: "เชื่อมต่อเครื่องมือแล้ว — กดชื่อเพื่อเปิดในแท็บใหม่",
+      });
     } catch (err) {
       console.error("Failed to add Google tool:", err);
+      setToolFeedback({
+        type: "error",
+        message: translateFirebaseError(
+          err,
+          "เชื่อมต่อเครื่องมือไม่สำเร็จ กรุณาลองใหม่"
+        ),
+      });
     } finally {
       setAddingTool(false);
     }
@@ -238,11 +307,23 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
 
   const handleDeleteTool = async (toolId: string) => {
     if (!user) return;
+    setToolFeedback(null);
     try {
       await deleteGoogleTool(user.uid, projectId, toolId);
       setGoogleTools((prev) => prev.filter((t) => t.id !== toolId));
+      setToolFeedback({
+        type: "success",
+        message: "ลบการเชื่อมต่อแล้ว (ไฟล์บน Google ยังอยู่)",
+      });
     } catch (err) {
       console.error("Failed to delete Google tool:", err);
+      setToolFeedback({
+        type: "error",
+        message: translateFirebaseError(
+          err,
+          "ลบการเชื่อมต่อไม่สำเร็จ กรุณาลองใหม่"
+        ),
+      });
     }
   };
 
@@ -263,13 +344,15 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
     }
   };
 
-  // Send Multi-turn chat message
   const handleSendChat = async (e?: React.FormEvent, customMsg?: string) => {
     if (e) e.preventDefault();
     const textToSend = customMsg || chatInput;
     if (!textToSend.trim() || sendingChat) return;
 
-    const newMessages = [...messages, { role: "user" as const, text: textToSend }];
+    const newMessages = [
+      ...messages,
+      { role: "user" as const, text: textToSend },
+    ];
     setMessages(newMessages);
     setChatInput("");
     setSendingChat(true);
@@ -277,7 +360,7 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
     try {
       const historyPayload = newMessages.slice(0, -1).map((m) => ({
         role: m.role,
-        parts: [{ text: m.text }],
+        parts: [{ text: m.text }] as [{ text: string }],
       }));
 
       const res = await fetch("/api/ai/chat", {
@@ -290,25 +373,39 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
             title: project?.title || "Project",
             description: project?.description,
             currentProgress: project?.overallProgress || 0,
-            connectedGoogleTools: googleTools.map((t) => `${t.type.toUpperCase()}: ${t.title} (${t.url})`),
+            connectedGoogleTools: googleTools.map(
+              (t) => `${t.type.toUpperCase()}: ${t.title} (${t.url})`
+            ),
           },
         }),
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (res.ok) {
-        const data = await res.json();
-        setMessages((prev) => [...prev, { role: "model", text: data.reply }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: "model", text: (data as { reply: string }).reply },
+        ]);
       } else {
         setMessages((prev) => [
           ...prev,
-          { role: "model", text: "ขออภัยครับ เกิดข้อผิดพลาดในการเชื่อมต่อกับ Gemini AI" },
+          {
+            role: "model",
+            text:
+              (data as { error?: string }).error ||
+              "เชื่อมต่อกับ AI ไม่สำเร็จ กรุณาลองใหม่",
+          },
         ]);
       }
     } catch (err) {
       console.error("Chat error:", err);
       setMessages((prev) => [
         ...prev,
-        { role: "model", text: "ขออภัยครับ ไม่สามารถส่งข้อความได้ในขณะนี้" },
+        {
+          role: "model",
+          text: "ไม่สามารถส่งข้อความได้ในขณะนี้ กรุณาตรวจสอบเครือข่ายแล้วลองใหม่",
+        },
       ]);
     } finally {
       setSendingChat(false);
@@ -329,7 +426,9 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
   if (!project) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
-        <p className="text-muted-foreground mb-4">ไม่พบข้อมูลโครงการนี้</p>
+        <p className="text-muted-foreground mb-4">
+          {pageError || "ไม่พบข้อมูลโครงการนี้"}
+        </p>
         <Link href="/">
           <Button variant="outline">กลับสู่หน้าหลัก</Button>
         </Link>
@@ -424,7 +523,10 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-foreground">
                   <Sparkles className="h-4 w-4 text-blue-600 animate-pulse" />
-                  ภาพรวมโครงการวิเคราะห์โดย Gemini AI
+                  ภาพรวมโครงการ (สรุปผลทีมโดย AI)
+                  <Badge variant="secondary" className="text-[9px] h-4 px-1.5 font-normal">
+                    Audit Trail
+                  </Badge>
                 </div>
                 <Button
                   variant="outline"
@@ -437,6 +539,17 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
                   {summarizing ? "กำลังวิเคราะห์..." : "อัปเดตบทวิเคราะห์ AI"}
                 </Button>
               </div>
+              {summaryFeedback && (
+                <p
+                  className={`text-xs ${
+                    summaryFeedback.type === "success"
+                      ? "text-green-700 dark:text-green-400"
+                      : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {summaryFeedback.message}
+                </p>
+              )}
               <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
                 {project.aiSummary || "ยังไม่มีบทวิเคราะห์ภาพรวม บันทึกการทำงานประจำวันแล้วกดปุ่มอัปเดตบทวิเคราะห์ AI"}
               </p>
@@ -487,6 +600,17 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
+                {toolFeedback && (
+                  <div
+                    className={`rounded-lg border p-2.5 text-xs ${
+                      toolFeedback.type === "success"
+                        ? "border-green-500/30 bg-green-500/10 text-green-800 dark:text-green-300"
+                        : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400"
+                    }`}
+                  >
+                    {toolFeedback.message}
+                  </div>
+                )}
                 {showAddTool && (
                   <form onSubmit={handleAddTool} className="p-3.5 rounded-xl bg-muted/40 border border-border/80 space-y-3 animate-in fade-in duration-150">
                     <div className="grid gap-2.5 sm:grid-cols-3">
@@ -603,6 +727,17 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmitLog} className="space-y-4">
+                  {logFeedback && (
+                    <div
+                      className={`rounded-lg border p-2.5 text-xs ${
+                        logFeedback.type === "success"
+                          ? "border-green-500/30 bg-green-500/10 text-green-800 dark:text-green-300"
+                          : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400"
+                      }`}
+                    >
+                      {logFeedback.message}
+                    </div>
+                  )}
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="space-y-1">
                       <label className="text-xs font-semibold">วันที่บันทึก *</label>
@@ -673,7 +808,7 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       <label htmlFor="evalAI" className="text-xs text-muted-foreground cursor-pointer">
-                        ให้ <strong>Gemini AI</strong> ช่วยประเมิน Merit Score อัตโนมัติ
+                        ให้ <strong>Invisible AI Observer</strong> ประเมิน High Impact / Merit Score พร้อมเหตุผล
                       </label>
                     </div>
                   </div>
@@ -765,11 +900,14 @@ export function ProjectViewClient({ projectId }: { projectId: string }) {
                       <Bot className="h-4 w-4" />
                     </div>
                     <div>
-                      <CardTitle className="text-sm font-bold text-foreground">
-                        ARWEEN AI Operations Copilot
+                      <CardTitle className="text-sm font-bold text-foreground flex flex-wrap items-center gap-2">
+                        <span>Invisible AI Observer</span>
+                        <Badge variant="secondary" className="text-[9px] h-4 px-1.5 font-normal">
+                          ประเมินแบบเป็นกลาง
+                        </Badge>
                       </CardTitle>
                       <CardDescription className="text-[11px]">
-                        Multi-turn interaction powered by Gemini
+                        High Impact Action · Audit Trail · Gemini
                       </CardDescription>
                     </div>
                   </div>
