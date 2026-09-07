@@ -1,0 +1,6 @@
+{
+  "name": "ARWEEN",
+  "description": "ARWEEN Superior Operations Management Cycle — AI-powered operations and merit evaluation platform",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
