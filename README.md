@@ -1,123 +1,96 @@
 # ARWEEN: Superior Operations Management Cycle
 
-> Turn invisible daily efforts into transparent project progress and fair merit recognition.
+> เปลี่ยนความทุ่มเทที่มองไม่เห็น ให้เป็นความคืบหน้าโปรเจกต์และความดีความชอบที่ตรวจสอบได้
 
-**Hack2Skill / Gen AI Academy APAC — `#AccelerateAIWithCloudRun`**
-
-| | |
-|---|---|
-| **Live app (Cloud Run)** | https://arween-app-619248313782.asia-southeast1.run.app |
-| **Public repo** | https://github.com/thanamethawat-cmyk/arween |
-| **Region** | `asia-southeast1` |
+แพลตฟอร์ม **Outcome-Driven** สำหรับทีมโปรเจกต์ — ประเมินตามเป้าหมาย (Anchor Framework) ไม่นับจำนวนข้อความ
 
 ---
 
-## What judges should click (4 steps)
-
-1. Open the Live URL → **Sign in** with Google or Email/Password.
-2. Create a project (or open an existing one).
-3. Add a **daily work log** → Gemini returns a **Merit Score (0–10)** with rationale.
-4. Use the **multi-turn AI chat** and optional **Google Docs / Sheets / Drive / Meet / Slides** links.
-
-If the page is empty after login, create one sample project and add 1–2 logs so scoring and chat have context.
-
----
-
-## Problem
-
-Daily contributions (especially behind-the-scenes work) are hard to see. Managers score from memory; HR systems sit apart from the workspace. ARWEEN records project evidence, lets Gemini evaluate impact with an audit trail, and rolls progress into a live dashboard — humans still decide rewards.
-
----
-
-## Architecture (submitted path)
+## สถาปัตยกรรมหลัก (MVP ที่ใช้จริง)
 
 ```
 [ Next.js 14 + Tailwind ]
         │
-        ├── Auth ──────> Firebase Authentication (Google / Email)
-        ├── Data ──────> Cloud Firestore (user-isolated: users/{uid}/...)
-        ├── AI ────────> Google Gemini (multi-turn + merit evaluation)
-        └── Secrets ───> Google Cloud Secret Manager → Cloud Run
+        ├── Auth ──────> NextAuth (Google ผ่านลิงก์เชิญ + อีเมล/รหัสผ่านสำหรับแอดมิน)
+        ├── Data ──────> PostgreSQL + Prisma (โปรเจกต์ทีมส่วนรวม)
+        ├── AI ────────> Gemini Agent 1/2/3 (Impact Score, Contribution 100%, Anti-Gaming)
+        └── Progress ──> คำนวณจากน้ำหนัก Objective / Milestone / KPI
 ```
 
-### Mandatory checklist (implemented)
-
-- [x] User authentication via Firebase
-- [x] Multi-turn interaction with the Gemini API
-- [x] User-isolated Firestore document storage (`users/{uid}/projects/...`)
-- [x] Secure API key retrieval via Google Cloud Secret Manager
-
-### Not the submitted path
-
-This repository also contains an **experimental organization layer** (Prisma / PostgreSQL / NextAuth, invites, disputes). That code is **not** what is deployed on the Live URL. Judges should evaluate the **Firebase + Firestore + Gemini** path only.
+เส้นทาง Firebase + Firestore ยังอยู่ใน repo เป็นต้นแบบสาธิตเก่า — **ไม่ใช่ UX หลักแล้ว**
 
 ---
 
-## Features (MVP)
+## ฟีเจอร์ MVP รอบแรก
 
-1. Project workspace + daily logs (tasks, blockers, progress)
-2. Invisible AI Observer — Merit Score with transparent rationale
-3. Progress % and cumulative merit on the dashboard
-4. Team / project AI summary
-5. Google Workspace link hub (Docs, Sheets, Drive, Meet, Slides)
-6. Cloud Run deploy with Secret Manager for `GEMINI_API_KEY`
+1. **Anchor Framework** — วัตถุประสงค์ / งานส่งมอบ / ตัวชี้วัด + ค่าน้ำหนัก
+2. **ทีมร่วม** — สมาชิกหลายคน + เชิญด้วยลิงก์ (ห้ามสมัครสาธารณะ)
+3. **Agent 1** — ให้ Impact Score 0–10 ผูก Milestone/KPI พร้อมเหตุผล
+4. **Agent 2** — ปิดรอบแล้วคำนวณ Contribution Ratio รวม 100%
+5. **Agent 3** — ตั้งธงปั่นคะแนน (Anti-Gaming)
+6. **หัวหน้ายืนยัน** + **Dispute** ก่อนใช้ประกอบผลตอบแทน
+
+ยังไม่รวม: จ่ายโบนัสอัตโนมัติ, Notion-like, Microsoft 365, บล็อกเชน
 
 ---
 
-## Run locally
+## รันในเครื่อง
 
 ```bash
 npm install
 cp .env.example .env
-# Fill GEMINI_API_KEY and NEXT_PUBLIC_FIREBASE_*
+# ใส่ DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL
+# (แนะนำ) GEMINI_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+npm run db:setup
 npm run dev
 ```
 
-Open http://localhost:3000
+เปิด http://localhost:3000
+
+### บัญชีสาธิต (หลัง seed)
+
+| อีเมล | รหัสผ่าน | บทบาท |
+|-------|----------|--------|
+| `lead@arween.demo` | `demo1234` | หัวหน้า |
+| `somying@arween.demo` | `demo1234` | สมาชิก |
+| `somchai@arween.demo` | `demo1234` | สมาชิก |
+
+โปรเจกต์สาธิต: `/projects/project-demo-001`  
+ลิงก์เชิญตัวอย่าง: `/invite/demo-invite-token-arween-001`
 
 ### Environment
 
 ```env
+DATABASE_URL=postgresql://...
+NEXTAUTH_SECRET=your-secret
+NEXTAUTH_URL=http://localhost:3000
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.0-flash
-NEXT_PUBLIC_FIREBASE_API_KEY=
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
-NEXT_PUBLIC_FIREBASE_APP_ID=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
 ```
 
-Never commit `.env`. Keep the Gemini API key only in Secret Manager for Cloud Run.
+ถ้าไม่มี `GEMINI_API_KEY` ระบบจะใช้ heuristic ในเครื่องสำหรับ Agent 1
 
 ---
 
-## Deploy (Cloud Run)
+## Flow ที่ควรลอง
 
-```bash
-gcloud run deploy arween-app \
-  --source . \
-  --region asia-southeast1 \
-  --platform managed \
-  --allow-unauthenticated \
-  --set-secrets GEMINI_API_KEY=GEMINI_API_KEY:latest
-```
-
-Requires build-time Firebase public client vars (see `Dockerfile` / Cloud Build) and a Secret Manager secret named `GEMINI_API_KEY`.
+1. เข้าสู่ระบบด้วย `lead@arween.demo`
+2. เปิดโปรเจกต์สาธิต หรือสร้างใหม่
+3. แท็บ **แผนเป้าหมาย** — ตั้ง Objective / Milestone / KPI
+4. เชิญสมาชิก (ถ้าตั้ง Google OAuth แล้ว)
+5. **บันทึกงานรายวัน** → ได้ Impact Score
+6. แท็บ **ประเมิน** — ยืนยันคะแนน → ปิดรอบ → ได้สัดส่วน 100%
+7. ทดลองข้อความสั้นๆ เช่น "รับทราบครับ" เพื่อดู Agent 3 ตั้งธง
+8. สมาชิกยื่น **โต้แย้ง** ได้จากคะแนนของตน
 
 ---
 
-## Google AI Studio continuation
+## เอกสารผลิตภัณฑ์
 
-This repo is the source of truth for importing into **Google AI Studio Build Mode** (Import from GitHub → iterate → Publish). Keep Firebase Auth, user-isolated Firestore, Gemini multi-turn, and Secret Manager. Do not replace this path with the older MeritSpace prototype.
-
----
-
-## Product docs (Thai)
-
-- [Blueprint](docs/พิมพ์เขียว-ARWEEN.md)
-- [Platform status](docs/สถานะแพลตฟอร์ม.md)
-- [Master data](docs/ข้อมูลหลัก-ARWEEN.md)
+- [ARWEEN-Complete-Document.md](ARWEEN-Complete-Document.md)
+- [docs/](docs/)
 
 ---
 

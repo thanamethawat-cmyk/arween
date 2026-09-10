@@ -6,7 +6,7 @@ export function Badge({
   className,
 }: {
   children: React.ReactNode;
-  variant?: "default" | "secondary" | "warning" | "success" | "outline";
+  variant?: "default" | "secondary" | "warning" | "success" | "outline" | "destructive";
   className?: string;
 }) {
   return (
@@ -18,6 +18,7 @@ export function Badge({
         variant === "warning" && "bg-amber-100 text-amber-800",
         variant === "success" && "bg-green-100 text-green-800",
         variant === "outline" && "border border-border bg-transparent text-foreground",
+        variant === "destructive" && "bg-red-100 text-red-800",
         className
       )}
     >

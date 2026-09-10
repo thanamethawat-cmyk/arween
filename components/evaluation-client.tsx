@@ -9,25 +9,33 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import {
-  saveScore,
   confirmScore,
-  saveTeamSummary,
   createDispute,
-  getScoreTemplateHint,
+  resolveDispute,
+  rejectDispute,
 } from "@/server/evaluate";
+import {
+  closeEvaluationPeriod,
+  confirmAllPeriodScores,
+  confirmContributionShares,
+} from "@/server/periods";
 
 type Score = {
   id: string;
   value: number;
   reason: string;
   confirmed: boolean;
+  flagged: boolean;
+  flagReason: string | null;
   user: { id: string; name: string };
   evidenceEvent: { action: string } | null;
+  milestone: { id: string; name: string } | null;
+  kpi: { id: string; name: string } | null;
+  evaluationPeriodId: string | null;
 };
 
 type Summary = {
@@ -40,6 +48,8 @@ type Summary = {
 type Dispute = {
   id: string;
   reason: string;
+  status: string;
+  scoreId: string | null;
   user: { name: string };
 };
 
@@ -47,178 +57,284 @@ type Member = {
   user: { id: string; name: string };
 };
 
+type Period = {
+  id: string;
+  periodStart: Date;
+  periodEnd: Date;
+  status: string;
+  shares: {
+    id: string;
+    ratioPercent: number;
+    impactSum: number;
+    confirmed: boolean;
+    user: { id: string; name: string };
+  }[];
+};
+
 export function EvaluationClient({
   projectId,
   currentUserId,
+  isLead,
   scores,
   summaries,
   disputes,
-  members,
+  periods,
 }: {
   projectId: string;
   currentUserId: string;
+  isLead: boolean;
   scores: Score[];
   summaries: Summary[];
   disputes: Dispute[];
   members: Member[];
+  periods: Period[];
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [hint, setHint] = useState<{ suggestedValue: number; reason: string } | null>(null);
+  const [error, setError] = useState("");
+  const openPeriod = periods.find((p) => p.status === "OPEN");
+  const closedPeriods = periods.filter((p) => p.status === "CLOSED");
 
-  async function handleSaveScore(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function run(fn: () => Promise<unknown>) {
     setLoading(true);
-    const form = new FormData(e.currentTarget);
-    await saveScore({
-      projectId,
-      userId: form.get("userId") as string,
-      value: Number(form.get("value")),
-      reason: form.get("reason") as string,
-    });
-    setLoading(false);
-    router.refresh();
-    e.currentTarget.reset();
-  }
-
-  async function handleSaveSummary(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setLoading(true);
-    const form = new FormData(e.currentTarget);
-    const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    await saveTeamSummary({
-      projectId,
-      content: form.get("summary") as string,
-      periodStart: weekAgo,
-      periodEnd: now,
-    });
-    setLoading(false);
-    router.refresh();
-    e.currentTarget.reset();
-  }
-
-  async function handleDispute(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setLoading(true);
-    const form = new FormData(e.currentTarget);
-    await createDispute({
-      projectId,
-      userId: currentUserId,
-      reason: form.get("disputeReason") as string,
-    });
-    setLoading(false);
-    router.refresh();
-    e.currentTarget.reset();
-  }
-
-  async function handleGetHint() {
-    const action = (
-      document.getElementById("hint-action") as HTMLInputElement
-    )?.value;
-    if (!action) return;
-    const result = await getScoreTemplateHint(action);
-    setHint(result);
+    setError("");
+    try {
+      await fn();
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "ดำเนินการไม่สำเร็จ");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {openPeriod && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              รอบประเมินปัจจุบัน (เปิดอยู่)
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {formatDate(openPeriod.periodStart)} – {formatDate(openPeriod.periodEnd)}
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {isLead && (
+              <>
+                <Button
+                  disabled={loading}
+                  variant="outline"
+                  onClick={() => run(() => confirmAllPeriodScores(openPeriod.id))}
+                >
+                  ยืนยันคะแนนทั้งหมดในรอบ (ที่ไม่ถูกธง)
+                </Button>
+                <Button
+                  disabled={loading}
+                  className="bg-blue-600 text-white"
+                  onClick={() => run(() => closeEvaluationPeriod(openPeriod.id))}
+                >
+                  ปิดรอบและคำนวณสัดส่วน 100%
+                </Button>
+              </>
+            )}
+            <p className="text-xs text-muted-foreground w-full">
+              ต้องยืนยันคะแนนก่อนปิดรอบ — คะแนนที่ถูกตั้งธงจะไม่นับเข้าสัดส่วน
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
-          <CardTitle>คะแนนรายคน</CardTitle>
+          <CardTitle>Impact Score (Audit Trail)</CardTitle>
           <p className="text-sm text-muted-foreground">
-            0–10 ตามผลกระทบต่องาน พร้อมเหตุผลอ้างหลักฐาน — หัวหน้ายืนยันก่อนใช้
+            คะแนนจาก AI เป็นข้อเสนอ — หัวหน้าต้องยืนยันก่อนใช้ประกอบผลตอบแทน
           </p>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3">
           {scores.length === 0 ? (
             <p className="text-sm text-muted-foreground">ยังไม่มีคะแนน</p>
           ) : (
-            <ul className="space-y-3">
-              {scores.map((s) => (
-                <li key={s.id} className="rounded-md border border-border p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{s.user.name}</span>
-                    <Badge variant="success">{s.value}/10</Badge>
-                    {s.confirmed ? (
-                      <Badge variant="secondary">ยืนยันแล้ว</Badge>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        className="h-7 px-2 text-xs"
-                        onClick={async () => {
-                          await confirmScore(s.id, projectId);
-                          router.refresh();
-                        }}
-                      >
-                        หัวหน้ายืนยัน
-                      </Button>
-                    )}
-                  </div>
-                  <p className="mt-2 text-sm">{s.reason}</p>
-                  {s.evidenceEvent && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      หลักฐาน: {s.evidenceEvent.action}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
+            scores.map((s) => (
+              <div key={s.id} className="rounded-md border p-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{s.user.name}</span>
+                  <Badge>{s.value}/10</Badge>
+                  {s.flagged && <Badge variant="destructive">ตั้งธง</Badge>}
+                  {s.confirmed ? (
+                    <Badge variant="secondary">ยืนยันแล้ว</Badge>
+                  ) : isLead && !s.flagged ? (
+                    <Button
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      disabled={loading}
+                      onClick={() => run(() => confirmScore(s.id, projectId))}
+                    >
+                      หัวหน้ายืนยัน
+                    </Button>
+                  ) : null}
+                </div>
+                <p className="text-sm">{s.reason}</p>
+                {s.milestone && (
+                  <p className="text-xs text-muted-foreground">
+                    ผูกกับ: {s.milestone.name}
+                    {s.kpi ? ` / ${s.kpi.name}` : ""}
+                  </p>
+                )}
+                {s.flagReason && (
+                  <p className="text-xs text-amber-700">{s.flagReason}</p>
+                )}
+                {s.evidenceEvent && (
+                  <p className="text-xs text-muted-foreground">
+                    หลักฐาน: {s.evidenceEvent.action}
+                  </p>
+                )}
+                {s.user.id === currentUserId && (
+                  <form
+                    className="space-y-2 border-t pt-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const form = new FormData(e.currentTarget);
+                      run(async () => {
+                        await createDispute({
+                          projectId,
+                          userId: currentUserId,
+                          reason: String(form.get("reason")),
+                          scoreId: s.id,
+                        });
+                      });
+                      e.currentTarget.reset();
+                    }}
+                  >
+                    <Textarea
+                      name="reason"
+                      placeholder="ไม่เห็นด้วยกับคะแนนนี้ เพราะ..."
+                      required
+                      rows={2}
+                    />
+                    <Button type="submit" size="sm" variant="outline" disabled={loading}>
+                      ยื่นโต้แย้ง
+                    </Button>
+                  </form>
+                )}
+              </div>
+            ))
           )}
+        </CardContent>
+      </Card>
 
-          <form onSubmit={handleSaveScore} className="space-y-3 border-t pt-4">
-            <p className="text-sm font-medium">เพิ่มคะแนน (กรอกด้วยตนเอง)</p>
-            <select
-              name="userId"
-              className="w-full rounded-md border border-border px-3 py-2 text-sm"
-              required
-            >
-              <option value="">เลือกสมาชิก</option>
-              {members.map((m) => (
-                <option key={m.user.id} value={m.user.id}>
-                  {m.user.name}
-                </option>
-              ))}
-            </select>
-            <Input
-              name="value"
-              type="number"
-              min={0}
-              max={10}
-              placeholder="คะแนน 0–10"
-              required
-            />
-            <Textarea name="reason" placeholder="เหตุผล อ้างหลักฐาน" required />
-            <Button type="submit" disabled={loading}>
-              บันทึกคะแนน
-            </Button>
-          </form>
-
-          <div className="space-y-2 border-t pt-4">
-            <p className="text-sm font-medium">ตัวช่วยจากเกณฑ์ในเอกสาร (ยังไม่เรียก AI)</p>
-            <Input id="hint-action" placeholder="พิมพ์ตัวอย่างข้อความงาน..." />
-            <Button type="button" variant="outline" onClick={handleGetHint}>
-              ดูคำแนะนำคะแนน
-            </Button>
-            {hint && (
-              <p className="rounded-md bg-muted px-3 py-2 text-sm">
-                แนะนำ {hint.suggestedValue}/10 — {hint.reason}
+      {closedPeriods.map((period) => (
+        <Card key={period.id}>
+          <CardHeader>
+            <CardTitle className="text-base">
+              สัดส่วนผลงานรอบที่ปิด — {formatDate(period.periodStart)} ถึง{" "}
+              {formatDate(period.periodEnd)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {period.shares.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                ไม่มีคะแนนที่ยืนยันแล้วในรอบนี้ — ยังคำนวณสัดส่วนไม่ได้
               </p>
+            ) : (
+              <>
+                <ul className="space-y-2">
+                  {period.shares.map((share) => (
+                    <li
+                      key={share.id}
+                      className="flex items-center justify-between text-sm border rounded px-3 py-2"
+                    >
+                      <span>{share.user.name}</span>
+                      <span className="font-semibold">
+                        {share.ratioPercent}%{" "}
+                        <span className="text-muted-foreground font-normal">
+                          (Impact รวม {share.impactSum})
+                        </span>
+                        {share.confirmed ? " · ยืนยันแล้ว" : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted-foreground">
+                  รวม{" "}
+                  {period.shares
+                    .reduce((s, x) => s + x.ratioPercent, 0)
+                    .toFixed(2)}
+                  %
+                </p>
+                {isLead && period.shares.some((s) => !s.confirmed) && (
+                  <Button
+                    disabled={loading}
+                    onClick={() => run(() => confirmContributionShares(period.id))}
+                    className="bg-blue-600 text-white"
+                  >
+                    ยืนยันสัดส่วนรอบนี้
+                  </Button>
+                )}
+              </>
             )}
-          </div>
+          </CardContent>
+        </Card>
+      ))}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>ข้อโต้แย้ง</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {disputes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">ไม่มีข้อโต้แย้ง</p>
+          ) : (
+            disputes.map((d) => (
+              <div key={d.id} className="rounded-md border p-3 text-sm space-y-2">
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="font-medium">{d.user.name}</span>
+                  <Badge variant="outline">{d.status}</Badge>
+                </div>
+                <p>{d.reason}</p>
+                {isLead && d.status === "PENDING" && (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      disabled={loading}
+                      onClick={() => run(() => resolveDispute(d.id, projectId))}
+                    >
+                      รับเรื่อง / ปิดแล้ว
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={loading}
+                      onClick={() => run(() => rejectDispute(d.id, projectId))}
+                    >
+                      ไม่รับ
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>สรุปผลงานทั้งทีม</CardTitle>
+          <CardTitle>สรุปผลทีม</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3">
           {summaries.length === 0 ? (
             <p className="text-sm text-muted-foreground">ยังไม่มีสรุป</p>
           ) : (
             summaries.map((s) => (
-              <div key={s.id} className="rounded-md border border-border p-3">
+              <div key={s.id} className="rounded-md border p-3">
                 <p className="text-xs text-muted-foreground">
                   {formatDate(s.periodStart)} – {formatDate(s.periodEnd)}
                 </p>
@@ -226,45 +342,6 @@ export function EvaluationClient({
               </div>
             ))
           )}
-          <form onSubmit={handleSaveSummary} className="space-y-3 border-t pt-4">
-            <Textarea
-              name="summary"
-              placeholder="สรุปสิ่งที่ทีมทำสำเร็จ ปัญหาที่ค้าง..."
-              required
-            />
-            <Button type="submit" disabled={loading} variant="outline">
-              บันทึกสรุปผลทีม
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>ข้อโต้แย้งที่ยังไม่ปิด</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {disputes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">ไม่มีข้อโต้แย้งค้าง</p>
-          ) : (
-            <ul className="space-y-2">
-              {disputes.map((d) => (
-                <li key={d.id} className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
-                  <span className="font-medium">{d.user.name}:</span> {d.reason}
-                </li>
-              ))}
-            </ul>
-          )}
-          <form onSubmit={handleDispute} className="space-y-3 border-t pt-4">
-            <Textarea
-              name="disputeReason"
-              placeholder="เหตุผลที่ไม่เห็นด้วยกับคะแนน..."
-              required
-            />
-            <Button type="submit" disabled={loading} variant="outline">
-              ยื่นข้อโต้แย้ง
-            </Button>
-          </form>
         </CardContent>
       </Card>
     </div>

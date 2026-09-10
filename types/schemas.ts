@@ -6,6 +6,7 @@ export const evidenceSourceSchema = z.enum([
   "COMMENT",
   "DOCUMENT",
   "STATUS_UPDATE",
+  "DAILY_LOG",
 ]);
 
 export type EvidenceSource = z.infer<typeof evidenceSourceSchema>;
@@ -103,6 +104,14 @@ export const EVIDENCE_SOURCE_LABELS: Record<string, string> = {
   COMMENT: "ความเห็น",
   DOCUMENT: "เอกสาร",
   STATUS_UPDATE: "อัปเดตสถานะ",
+  DAILY_LOG: "บันทึกงานรายวัน",
+};
+
+export const ANCHOR_STATUS_LABELS: Record<string, string> = {
+  NOT_STARTED: "ยังไม่เริ่ม",
+  IN_PROGRESS: "กำลังทำ",
+  ACHIEVED: "สำเร็จแล้ว",
+  AT_RISK: "เสี่ยง",
 };
 
 export const createInviteSchema = z.object({

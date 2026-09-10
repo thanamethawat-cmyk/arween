@@ -11,7 +11,7 @@ async function main() {
 
   const lead = await prisma.user.upsert({
     where: { email: "lead@arween.demo" },
-    update: {},
+    update: { passwordHash, role: "LEAD", name: "สมชาย หัวหน้าโปรเจกต์" },
     create: {
       name: "สมชาย หัวหน้าโปรเจกต์",
       email: "lead@arween.demo",
@@ -22,7 +22,7 @@ async function main() {
 
   const member1 = await prisma.user.upsert({
     where: { email: "somying@arween.demo" },
-    update: {},
+    update: { passwordHash },
     create: {
       name: "สมหญิง ช่วยงานเบื้องหลัง",
       email: "somying@arween.demo",
@@ -33,7 +33,7 @@ async function main() {
 
   const member2 = await prisma.user.upsert({
     where: { email: "somchai@arween.demo" },
-    update: {},
+    update: { passwordHash },
     create: {
       name: "สมชาย รอง ทำงานหน้า",
       email: "somchai@arween.demo",
@@ -44,12 +44,17 @@ async function main() {
 
   const project = await prisma.project.upsert({
     where: { id: "project-demo-001" },
-    update: {},
+    update: {
+      name: "โปรเจกต์สาธิต ARWEEN",
+      description: "โปรเจกต์ตัวอย่าง Outcome-Driven พร้อม Anchor Framework",
+      progressPercent: 0,
+    },
     create: {
       id: "project-demo-001",
       name: "โปรเจกต์สาธิต ARWEEN",
-      description: "โปรเจกต์ตัวอย่างสำหรับทดสอบการเก็บหลักฐานและประเมินทีม",
+      description: "โปรเจกต์ตัวอย่าง Outcome-Driven พร้อม Anchor Framework",
       status: "ACTIVE",
+      progressPercent: 0,
     },
   });
 
@@ -69,109 +74,143 @@ async function main() {
     });
   }
 
+  // ล้างแผนเก่าของโปรเจกต์สาธิตแล้วใส่ใหม่
+  await prisma.objective.deleteMany({ where: { projectId: project.id } });
+
+  const objective = await prisma.objective.create({
+    data: {
+      projectId: project.id,
+      name: "ส่งมอบแพลตฟอร์มประเมินผลงานที่ใช้จริง",
+      description: "ให้ทีมทดลองใช้งานครบวงจร Anchor + Agents",
+      weight: 100,
+      sortOrder: 0,
+    },
+  });
+
+  const ms1 = await prisma.milestone.create({
+    data: {
+      objectiveId: objective.id,
+      name: "ตั้งค่า Anchor Framework",
+      successCriteria: "มี Objective / Milestone / KPI และน้ำหนักครบ",
+      weight: 40,
+      status: "ACHIEVED",
+      sortOrder: 0,
+    },
+  });
+
+  const ms2 = await prisma.milestone.create({
+    data: {
+      objectiveId: objective.id,
+      name: "เปิดใช้การประเมินทีม",
+      successCriteria: "มีบันทึกงาน Impact Score และปิดรอบสัดส่วน 100% ได้",
+      weight: 60,
+      status: "IN_PROGRESS",
+      sortOrder: 1,
+    },
+  });
+
+  await prisma.kpi.create({
+    data: {
+      milestoneId: ms1.id,
+      name: "จำนวน Milestone ที่กำหนดครบ",
+      unit: "รายการ",
+      targetValue: 2,
+      currentValue: 2,
+      weight: 100,
+      status: "ACHIEVED",
+    },
+  });
+
+  await prisma.kpi.create({
+    data: {
+      milestoneId: ms2.id,
+      name: "สมาชิกที่บันทึกงานอย่างน้อย 1 ครั้ง",
+      unit: "คน",
+      targetValue: 3,
+      currentValue: 1,
+      weight: 100,
+      status: "IN_PROGRESS",
+    },
+  });
+
+  // progress = leaf ACHIEVED: ms1 kpi 40% of plan → 40
+  await prisma.project.update({
+    where: { id: project.id },
+    data: { progressPercent: 40 },
+  });
+
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
+
+  await prisma.evaluationPeriod.deleteMany({ where: { projectId: project.id } });
+  const period = await prisma.evaluationPeriod.create({
+    data: {
+      projectId: project.id,
+      periodStart: weekStart,
+      periodEnd: weekEnd,
+      status: "OPEN",
+    },
+  });
+
+  await prisma.workItem.deleteMany({ where: { projectId: project.id } });
   const workItems = await Promise.all([
     prisma.workItem.create({
       data: {
         projectId: project.id,
-        title: "ออกแบบหน้าจอหลัก",
-        description: "ออกแบบ UI สำหรับหน้ารวมสถานะงาน",
+        title: "ออกแบบหน้าแผนเป้าหมาย",
+        description: "UI สำหรับ Objective / Milestone / KPI",
         status: "IN_PROGRESS",
       },
     }),
     prisma.workItem.create({
       data: {
         projectId: project.id,
-        title: "เชื่อมฐานข้อมูล",
-        description: "ตั้งค่า Prisma และ PostgreSQL",
+        title: "เชื่อม Prisma Schema",
+        description: "ตั้งค่า Anchor + EvaluationPeriod",
         status: "DONE",
-      },
-    }),
-    prisma.workItem.create({
-      data: {
-        projectId: project.id,
-        title: "ทดสอบระบบเก็บหลักฐาน",
-        status: "TODO",
       },
     }),
   ]);
 
+  await prisma.documentRef.deleteMany({ where: { projectId: project.id } });
   await prisma.documentRef.createMany({
     data: [
       {
         projectId: project.id,
-        title: "เอกสารขอบเขตหน้าที่ทีม AI",
-        url: "/docs/ทีม-AI-ขอบเขตหน้าที่.md",
-        addedById: lead.id,
-      },
-      {
-        projectId: project.id,
-        title: "เกณฑ์ให้คะแนน",
-        url: "/docs/เกณฑ์ให้คะแนน.md",
+        title: "เอกสารฉบับสมบูรณ์ ARWEEN",
+        url: "/ARWEEN-Complete-Document.md",
         addedById: lead.id,
       },
     ],
   });
 
-  const evidenceData = [
-    {
+  await prisma.score.deleteMany({ where: { projectId: project.id } });
+  await prisma.evidenceEvent.deleteMany({ where: { projectId: project.id } });
+
+  const evidenceGood = await prisma.evidenceEvent.create({
+    data: {
+      projectId: project.id,
       actorId: member1.id,
       action:
-        "อธิบายวิธีแก้ bug ที่ทีมติดมา 3 วัน พร้อมขั้นตอนละเอียด — ช่วยทีมดีไซน์แก้ layout บนมือถือ",
-      source: "COMMENT" as const,
-      occurredAt: new Date("2026-09-01T10:30:00"),
+        "สรุปขั้นตอนแก้ blocker ของ KPI สมาชิกที่บันทึกงาน และอัปเดตเอกสารแผนให้ทีมใช้ต่อได้",
+      source: "DAILY_LOG",
+      occurredAt: new Date(),
     },
-    {
+  });
+
+  await prisma.evidenceEvent.create({
+    data: {
+      projectId: project.id,
       actorId: member2.id,
       action: "รับทราบครับ",
-      source: "COMMENT" as const,
-      occurredAt: new Date("2026-09-01T11:00:00"),
+      source: "DAILY_LOG",
+      occurredAt: new Date(),
     },
-    {
-      actorId: lead.id,
-      action: "สร้างงาน: ออกแบบหน้าจอหลัก",
-      source: "WORK_ITEM" as const,
-      occurredAt: new Date("2026-08-28T09:00:00"),
-      metadata: { workItemId: workItems[0].id },
-    },
-    {
-      actorId: member1.id,
-      action: "เปลี่ยนสถานะเป็น DONE — งาน: เชื่อมฐานข้อมูล",
-      source: "STATUS_UPDATE" as const,
-      occurredAt: new Date("2026-08-30T16:00:00"),
-      metadata: { workItemId: workItems[1].id },
-    },
-    {
-      actorId: member2.id,
-      action: "รับทราบครับ รับทราบครับ รับทราบครับ",
-      source: "COMMENT" as const,
-      occurredAt: new Date("2026-09-02T08:00:00"),
-    },
-  ];
-
-  for (const ev of evidenceData) {
-    await prisma.evidenceEvent.create({
-      data: {
-        projectId: project.id,
-        ...ev,
-      },
-    });
-  }
-
-  await prisma.notification.createMany({
-    data: [
-      {
-        projectId: project.id,
-        type: "WEEKLY_DIGEST",
-        title: "สรุปงานรายสัปดาห์",
-        body: "สัปดาห์นี้มีหลักฐานการทำงาน 5 รายการ และงานที่เสร็จแล้ว 1 รายการ",
-      },
-      {
-        projectId: project.id,
-        type: "GAMING_FLAG",
-        title: "สัญญาณสงสัยว่าปั่นคะแนน",
-        body: 'พบข้อความ "รับทราบครับ" ซ้ำ 3 ครั้งในวันเดียว — รอหัวหน้าตรวจสอบ',
-      },
-    ],
   });
 
   await prisma.score.create({
@@ -180,18 +219,57 @@ async function main() {
       userId: member1.id,
       value: 9,
       reason:
-        "ช่วยแก้ปัญหาซับซ้อนและอธิบายขั้นตอนให้ทีม — อ้างหลักฐานความเห็นเมื่อ 1 ก.ย.",
+        "ช่วยปลดล็อกงานที่ผูกกับ Milestone เปิดใช้การประเมินทีม — อ้างหลักฐานบันทึกรายวัน",
+      evidenceEventId: evidenceGood.id,
+      milestoneId: ms2.id,
+      evaluationPeriodId: period.id,
+      suggestedBy: "AI",
       confirmed: false,
+      flagged: false,
     },
   });
 
+  await prisma.score.create({
+    data: {
+      projectId: project.id,
+      userId: member2.id,
+      value: 0,
+      reason: "ข้อความตอบรับทั่วไป | พบข้อความตอบรับซ้ำ — สงสัยปั่นคะแนน (ตัวอย่าง)",
+      milestoneId: ms2.id,
+      evaluationPeriodId: period.id,
+      suggestedBy: "AI",
+      confirmed: false,
+      flagged: true,
+      flagReason: "ตัวอย่างสัญญาณ Anti-Gaming",
+    },
+  });
+
+  await prisma.notification.deleteMany({ where: { projectId: project.id } });
+  await prisma.notification.createMany({
+    data: [
+      {
+        projectId: project.id,
+        type: "WEEKLY_DIGEST",
+        title: "สรุปงานรายสัปดาห์",
+        body: "มีหลักฐานและคะแนนตัวอย่างในรอบปัจจุบัน — หัวหน้าสามารถยืนยันแล้วปิดรอบได้",
+      },
+      {
+        projectId: project.id,
+        type: "GAMING_FLAG",
+        title: "สัญญาณสงสัยว่าปั่นคะแนน",
+        body: 'พบข้อความ "รับทราบครับ" ที่ไม่มีผลต่อ KPI',
+      },
+    ],
+  });
+
+  await prisma.teamSummary.deleteMany({ where: { projectId: project.id } });
   await prisma.teamSummary.create({
     data: {
       projectId: project.id,
       content:
-        "ทีมทำงานเชื่อมฐานข้อมูลเสร็จแล้ว กำลังออกแบบหน้าจอหลัก มีการช่วยเหลือข้ามสายงานจากสมหญิง ยังมีงานทดสอบระบบเก็บหลักฐานค้างอยู่",
-      periodStart: new Date("2026-08-26"),
-      periodEnd: new Date("2026-09-02"),
+        "ทีมตั้ง Anchor ครบแล้ว ความคืบหน้า 40% จาก Milestone แรกที่สำเร็จ กำลังเปิดใช้การประเมินทีม",
+      periodStart: weekStart,
+      periodEnd: weekEnd,
     },
   });
 
@@ -216,8 +294,9 @@ async function main() {
   });
 
   console.log("Seed สำเร็จ");
-  console.log("โปรเจกต์:", project.id);
+  console.log("โปรเจกต์:", project.id, "workItems:", workItems.length);
   console.log("เข้าสู่ระบบ: lead@arween.demo / demo1234");
+  console.log("สมาชิก: somying@arween.demo / demo1234");
   console.log("ลิงก์เชิญตัวอย่าง: /invite/" + sampleInvite.token);
 }
 

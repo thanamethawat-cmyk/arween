@@ -8,19 +8,21 @@ datasource db {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  name           String
-  email          String          @unique
-  passwordHash   String?
-  emailVerified  DateTime?
-  role           UserRole        @default(MEMBER)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  memberships    ProjectMember[]
-  evidenceEvents EvidenceEvent[]
-  scores         Score[]
-  disputes       Dispute[]
-  invitesSent    ProjectInvite[] @relation("InvitesSent")
+  id               String              @id @default(cuid())
+  name             String
+  email            String              @unique
+  passwordHash     String?
+  emailVerified    DateTime?
+  role             UserRole            @default(MEMBER)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  memberships      ProjectMember[]
+  evidenceEvents   EvidenceEvent[]
+  scores           Score[]
+  disputes         Dispute[]
+  invitesSent      ProjectInvite[]     @relation("InvitesSent")
+  contributionShares ContributionShare[]
+  periodsClosed    EvaluationPeriod[]  @relation("PeriodClosedBy")
 }
 
 enum UserRole {
@@ -30,12 +32,13 @@ enum UserRole {
 }
 
 model Project {
-  id            String          @id @default(cuid())
+  id            String             @id @default(cuid())
   name          String
   description   String?
-  status        ProjectStatus   @default(ACTIVE)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  status        ProjectStatus      @default(ACTIVE)
+  progressPercent Float            @default(0)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
   members       ProjectMember[]
   workItems     WorkItem[]
   documents     DocumentRef[]
@@ -45,6 +48,8 @@ model Project {
   teamSummaries TeamSummary[]
   disputes      Dispute[]
   invites       ProjectInvite[]
+  objectives    Objective[]
+  periods       EvaluationPeriod[]
 }
 
 model ProjectInvite {
@@ -79,6 +84,63 @@ model ProjectMember {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, userId])
+}
+
+model Objective {
+  id          String      @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  weight      Int
+  sortOrder   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestones  Milestone[]
+
+  @@index([projectId])
+}
+
+model Milestone {
+  id               String          @id @default(cuid())
+  objectiveId      String
+  name             String
+  successCriteria  String
+  weight           Int
+  status           AnchorStatus    @default(NOT_STARTED)
+  sortOrder        Int             @default(0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  objective        Objective       @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  kpis             Kpi[]
+  scores           Score[]
+
+  @@index([objectiveId])
+}
+
+model Kpi {
+  id           String       @id @default(cuid())
+  milestoneId  String
+  name         String
+  unit         String
+  targetValue  Float
+  currentValue Float        @default(0)
+  weight       Int
+  status       AnchorStatus @default(NOT_STARTED)
+  sortOrder    Int          @default(0)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  milestone    Milestone    @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  scores       Score[]
+
+  @@index([milestoneId])
+}
+
+enum AnchorStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  ACHIEVED
+  AT_RISK
 }
 
 model WorkItem {
@@ -121,6 +183,8 @@ model EvidenceEvent {
   project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   actor       User           @relation(fields: [actorId], references: [id], onDelete: Cascade)
   scores      Score[]
+
+  @@index([projectId])
 }
 
 enum EvidenceSource {
@@ -128,6 +192,7 @@ enum EvidenceSource {
   COMMENT
   DOCUMENT
   STATUS_UPDATE
+  DAILY_LOG
 }
 
 model Notification {
@@ -147,6 +212,42 @@ enum NotificationType {
   DISPUTE_PENDING
 }
 
+model EvaluationPeriod {
+  id          String              @id @default(cuid())
+  projectId   String
+  periodStart DateTime
+  periodEnd   DateTime
+  status      PeriodStatus        @default(OPEN)
+  closedAt    DateTime?
+  closedById  String?
+  createdAt   DateTime            @default(now())
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  closedBy    User?               @relation("PeriodClosedBy", fields: [closedById], references: [id])
+  scores      Score[]
+  shares      ContributionShare[]
+
+  @@index([projectId])
+}
+
+enum PeriodStatus {
+  OPEN
+  CLOSED
+}
+
+model ContributionShare {
+  id            String           @id @default(cuid())
+  periodId      String
+  userId        String
+  ratioPercent  Float
+  impactSum     Float
+  confirmed     Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  period        EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, userId])
+}
+
 model Dispute {
   id          String        @id @default(cuid())
   projectId   String
@@ -158,6 +259,9 @@ model Dispute {
   resolvedAt  DateTime?
   project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score       Score?        @relation(fields: [scoreId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
 }
 
 enum DisputeStatus {
@@ -167,17 +271,35 @@ enum DisputeStatus {
 }
 
 model Score {
-  id              String         @id @default(cuid())
-  projectId       String
-  userId          String
-  value           Int
-  reason          String
-  evidenceEventId String?
-  confirmed       Boolean        @default(false)
-  createdAt       DateTime       @default(now())
-  project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  evidenceEvent   EvidenceEvent? @relation(fields: [evidenceEventId], references: [id])
+  id                 String            @id @default(cuid())
+  projectId          String
+  userId             String
+  value              Int
+  reason             String
+  evidenceEventId    String?
+  milestoneId        String?
+  kpiId              String?
+  evaluationPeriodId String?
+  suggestedBy        ScoreSource       @default(AI)
+  flagged            Boolean           @default(false)
+  flagReason         String?
+  confirmed          Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  project            Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  evidenceEvent      EvidenceEvent?    @relation(fields: [evidenceEventId], references: [id])
+  milestone          Milestone?        @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  kpi                Kpi?              @relation(fields: [kpiId], references: [id], onDelete: SetNull)
+  evaluationPeriod   EvaluationPeriod? @relation(fields: [evaluationPeriodId], references: [id], onDelete: SetNull)
+  disputes           Dispute[]
+
+  @@index([projectId])
+  @@index([evaluationPeriodId])
+}
+
+enum ScoreSource {
+  AI
+  LEAD
 }
 
 model TeamSummary {

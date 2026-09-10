@@ -1,46 +1,44 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/context/auth-context";
-import { translateFirebaseError } from "@/lib/firebase-errors";
-import { FIREBASE_CONFIG_MISSING_MESSAGE } from "@/lib/firebase";
+import { useRouter, useSearchParams } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+function errorMessage(code: string | null): string {
+  switch (code) {
+    case "invite_required":
+      return "ต้องได้รับลิงก์เชิญจากหัวหน้าก่อน จึงจะเข้าสู่ระบบด้วย Google ได้";
+    case "CredentialsSignin":
+      return "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
+    case "missing_email":
+      return "บัญชี Google ไม่มีอีเมล";
+    case "invite_invalid":
+      return "ลิงก์เชิญไม่ถูกต้องหรือหมดอายุ";
+    default:
+      return code ? `เข้าสู่ระบบไม่สำเร็จ (${code})` : "";
+  }
+}
+
 export default function LoginFormInner() {
   const router = useRouter();
-  const {
-    signInWithGoogle,
-    signInWithEmail,
-    signUpWithEmail,
-    firebaseReady,
-  } = useAuth();
-
-  const [isRegister, setIsRegister] = useState(false);
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(
-    firebaseReady ? "" : FIREBASE_CONFIG_MISSING_MESSAGE
+    errorMessage(searchParams.get("error"))
   );
 
   const handleGoogleSignIn = async () => {
     setError("");
     setLoading(true);
     try {
-      await signInWithGoogle();
-      router.push("/");
-    } catch (err: unknown) {
-      setError(
-        translateFirebaseError(
-          err,
-          "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"
-        )
-      );
-    } finally {
+      await signIn("google", { callbackUrl: "/" });
+    } catch {
+      setError("เข้าสู่ระบบด้วย Google ไม่สำเร็จ");
       setLoading(false);
     }
   };
@@ -50,17 +48,20 @@ export default function LoginFormInner() {
     setError("");
     setLoading(true);
     try {
-      if (isRegister) {
-        await signUpWithEmail(email, password, displayName);
-      } else {
-        await signInWithEmail(email, password);
+      const result = await signIn("credentials", {
+        email: email.trim().toLowerCase(),
+        password,
+        redirect: false,
+      });
+      if (result?.error) {
+        setError(errorMessage(result.error) || "เข้าสู่ระบบไม่สำเร็จ");
+        setLoading(false);
+        return;
       }
       router.push("/");
-    } catch (err: unknown) {
-      setError(
-        translateFirebaseError(err, "เกิดข้อผิดพลาดในการเข้าสู่ระบบ")
-      );
-    } finally {
+      router.refresh();
+    } catch {
+      setError("เกิดข้อผิดพลาดในการเข้าสู่ระบบ");
       setLoading(false);
     }
   };
@@ -75,10 +76,10 @@ export default function LoginFormInner() {
           ARWEEN
         </CardTitle>
         <CardDescription className="text-sm text-muted-foreground">
-          AI Operations & Merit Workspace
+          แพลตฟอร์มบริหารผลงานแบบ Outcome-Driven
           <br />
           <span className="text-xs text-muted-foreground/80">
-            เปลี่ยนความทุ่มเทประจำวัน เป็นความสำเร็จของโครงการ
+            สมาชิกทั่วไปเข้าด้วย Google ผ่านลิงก์เชิญเท่านั้น
           </span>
         </CardDescription>
       </CardHeader>
@@ -95,7 +96,7 @@ export default function LoginFormInner() {
           variant="outline"
           className="w-full py-5 font-medium flex items-center justify-center gap-3 border-border hover:bg-muted transition-colors"
           onClick={handleGoogleSignIn}
-          disabled={loading || !firebaseReady}
+          disabled={loading}
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">
             <path
@@ -123,31 +124,16 @@ export default function LoginFormInner() {
             <span className="w-full border-t border-border" />
           </div>
           <span className="relative bg-background px-2 text-xs uppercase text-muted-foreground">
-            หรือใช้อีเมล
+            หรือแอดมิน / บัญชีสาธิต
           </span>
         </div>
 
         <form onSubmit={handleEmailAuth} className="space-y-3">
-          {isRegister && (
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">
-                ชื่อ-นามสกุล หรือชื่อเล่น
-              </label>
-              <Input
-                type="text"
-                placeholder="เช่น สมชาย ใจดี"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                required
-              />
-            </div>
-          )}
-
           <div className="space-y-1">
             <label className="text-xs font-medium text-foreground">อีเมล</label>
             <Input
               type="email"
-              placeholder="name@company.com"
+              placeholder="lead@arween.demo"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -168,30 +154,15 @@ export default function LoginFormInner() {
           <Button
             type="submit"
             className="w-full py-5 bg-blue-600 hover:bg-blue-700 font-semibold text-white shadow"
-            disabled={loading || !firebaseReady}
+            disabled={loading}
           >
-            {loading
-              ? "กำลังดำเนินการ..."
-              : isRegister
-              ? "สร้างบัญชีผู้ใช้"
-              : "เข้าสู่ระบบ"}
+            {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบด้วยอีเมล"}
           </Button>
         </form>
 
-        <div className="text-center pt-2">
-          <button
-            type="button"
-            className="text-xs text-blue-600 hover:underline dark:text-blue-400 font-medium"
-            onClick={() => {
-              setIsRegister(!isRegister);
-              setError(firebaseReady ? "" : FIREBASE_CONFIG_MISSING_MESSAGE);
-            }}
-          >
-            {isRegister
-              ? "มีบัญชีอยู่แล้ว? เข้าสู่ระบบที่นี่"
-              : "ยังไม่มีบัญชีผู้ใช้? สมัครสมาชิกใหม่"}
-          </button>
-        </div>
+        <p className="text-center text-[11px] text-muted-foreground pt-1">
+          ระบบไม่เปิดให้สมัครบัญชีสาธารณะ — ขอลิงก์เชิญจากหัวหน้าโปรเจกต์
+        </p>
       </CardContent>
     </Card>
   );

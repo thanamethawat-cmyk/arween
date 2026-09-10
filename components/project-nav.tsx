@@ -5,10 +5,11 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const links = [
-  { href: "", label: "สถานะงาน" },
+  { href: "", label: "ภาพรวม" },
+  { href: "/plan", label: "แผนเป้าหมาย" },
   { href: "/evidence", label: "หลักฐาน" },
-  { href: "/notifications", label: "แจ้งเตือน" },
   { href: "/evaluation", label: "ประเมิน" },
+  { href: "/notifications", label: "แจ้งเตือน" },
 ];
 
 export function ProjectNav({ projectId }: { projectId: string }) {

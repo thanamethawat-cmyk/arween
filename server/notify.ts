@@ -41,6 +41,15 @@ export async function seedWeeklyDigest(projectId: string) {
   });
 }
 
+export async function createWeeklyDigest(projectId: string, body: string) {
+  return createNotification({
+    projectId,
+    type: "WEEKLY_DIGEST",
+    title: "สรุปงานรายสัปดาห์ / ปิดรอบประเมิน",
+    body,
+  });
+}
+
 export async function createGamingFlag(projectId: string, detail: string) {
   return createNotification({
     projectId,
