@@ -21,16 +21,17 @@
 
 ---
 
-## ฟีเจอร์ MVP รอบแรก
+## ฟีเจอร์ MVP ที่ใช้ได้ (ก + ข)
 
-1. **Anchor Framework** — วัตถุประสงค์ / งานส่งมอบ / ตัวชี้วัด + ค่าน้ำหนัก
-2. **ทีมร่วม** — สมาชิกหลายคน + เชิญด้วยลิงก์ (ห้ามสมัครสาธารณะ)
-3. **Agent 1** — ให้ Impact Score 0–10 ผูก Milestone/KPI พร้อมเหตุผล
-4. **Agent 2** — ปิดรอบแล้วคำนวณ Contribution Ratio รวม 100%
-5. **Agent 3** — ตั้งธงปั่นคะแนน (Anti-Gaming)
-6. **หัวหน้ายืนยัน** + **Dispute** ก่อนใช้ประกอบผลตอบแทน
+1. Anchor Framework — Objectives / Milestones / KPIs + ความคืบหน้าจากน้ำหนัก
+2. พื้นที่ทีม — สมาชิก + เชิญด้วย Google (ลิงก์ครั้งเดียว 7 วัน)
+3. Agent 1 — Impact Score 0–10 ด้วย Gemini (ผูก Milestone/KPI)
+4. Agent 2 — สัดส่วนผลงานรวม 100% เมื่อปิดรอบ (หัวหน้ายืนยัน)
+5. Agent 3 — ตั้งธงปั่นคะแนน + Dispute
+6. WorkItem + ลิงก์ Google Workspace (`/projects/[id]/hub`)
+7. แชท AI บริบทโปรเจกต์ (`/projects/[id]/chat`)
 
-ยังไม่รวม: จ่ายโบนัสอัตโนมัติ, Notion-like, Microsoft 365, บล็อกเชน
+ยังไม่รวมรอบนี้: Merit-to-Earn / จ่ายโบนัสอัตโนมัติ
 
 ---
 

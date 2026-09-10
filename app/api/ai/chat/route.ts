@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import {
   continueMultiTurnChat,
   isGeminiConfigured,
@@ -8,6 +11,11 @@ import {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "กรุณาเข้าสู่ระบบ" }, { status: 401 });
+    }
+
     if (!isGeminiConfigured()) {
       return NextResponse.json(
         { error: GEMINI_API_KEY_MISSING_MESSAGE },
@@ -15,12 +23,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { history, message, projectContext } = await req.json();
+    const { history, message, projectContext, projectId } = await req.json();
 
     if (!message || typeof message !== "string") {
       return NextResponse.json(
         { error: "ต้องระบุข้อความ" },
         { status: 400 }
+      );
+    }
+
+    if (!projectId || typeof projectId !== "string") {
+      return NextResponse.json(
+        { error: "ต้องระบุโปรเจกต์" },
+        { status: 400 }
+      );
+    }
+
+    const membership = await prisma.projectMember.findUnique({
+      where: {
+        projectId_userId: {
+          projectId,
+          userId: session.user.id,
+        },
+      },
+    });
+    if (!membership) {
+      return NextResponse.json(
+        { error: "คุณไม่ใช่สมาชิกของโปรเจกต์นี้" },
+        { status: 403 }
       );
     }
 

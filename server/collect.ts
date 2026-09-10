@@ -1,14 +1,24 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { requireSessionUser } from "@/lib/session";
 import {
   assertNotPrivateSource,
   createEvidenceSchema,
   createCommentSchema,
   type CreateEvidenceInput,
 } from "@/types/schemas";
+
+async function requireMembership(projectId: string, userId: string) {
+  const membership = await prisma.projectMember.findUnique({
+    where: { projectId_userId: { projectId, userId } },
+  });
+  if (!membership) {
+    throw new Error("คุณไม่ใช่สมาชิกของโปรเจกต์นี้");
+  }
+  return membership;
+}
 
 export async function recordEvidence(input: CreateEvidenceInput) {
   const parsed = createEvidenceSchema.parse(input);
@@ -28,6 +38,7 @@ export async function recordEvidence(input: CreateEvidenceInput) {
 
   revalidatePath(`/projects/${parsed.projectId}`);
   revalidatePath(`/projects/${parsed.projectId}/evidence`);
+  revalidatePath(`/projects/${parsed.projectId}/hub`);
 
   return event;
 }
@@ -37,11 +48,13 @@ export async function addComment(input: {
   actorId: string;
   content: string;
 }) {
+  const user = await requireSessionUser();
+  await requireMembership(input.projectId, user.id);
   const parsed = createCommentSchema.parse(input);
 
   return recordEvidence({
     projectId: parsed.projectId,
-    actorId: parsed.actorId,
+    actorId: user.id,
     action: parsed.content,
     source: "COMMENT",
   });

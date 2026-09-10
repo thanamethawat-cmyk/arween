@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 const links = [
   { href: "", label: "ภาพรวม" },
   { href: "/plan", label: "แผนเป้าหมาย" },
+  { href: "/hub", label: "งานและเอกสาร" },
+  { href: "/chat", label: "แชท AI" },
   { href: "/evidence", label: "หลักฐาน" },
   { href: "/evaluation", label: "ประเมิน" },
   { href: "/notifications", label: "แจ้งเตือน" },

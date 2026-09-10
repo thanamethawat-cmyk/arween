@@ -19,6 +19,7 @@ export type Agent1Result = {
   milestoneId: string | null;
   kpiId: string | null;
   keyHighlight: string;
+  usedGemini: boolean;
 };
 
 function heuristicScore(
@@ -56,10 +57,11 @@ function heuristicScore(
 
   return {
     impactScore,
-    rationale,
+    rationale: `โหมดสำรอง (ไม่มี GEMINI_API_KEY): ${rationale}`,
     milestoneId: first?.milestoneId ?? null,
     kpiId: first?.kpiId ?? null,
     keyHighlight: action.slice(0, 80),
+    usedGemini: false,
   };
 }
 
@@ -137,7 +139,10 @@ ${input.action}
           null;
 
     return {
-      impactScore: Math.min(10, Math.max(0, Math.round(Number(data.impactScore) || 5))),
+      impactScore: Math.min(
+        10,
+        Math.max(0, Math.round(Number(data.impactScore) || 5))
+      ),
       rationale:
         typeof data.rationale === "string"
           ? data.rationale
@@ -148,8 +153,10 @@ ${input.action}
         typeof data.keyHighlight === "string"
           ? data.keyHighlight
           : input.action.slice(0, 80),
+      usedGemini: true,
     };
-  } catch {
-    return heuristicScore(input.action, input.anchors);
+  } catch (err) {
+    const { translateGeminiApiError } = await import("@/lib/gemini");
+    throw new Error(translateGeminiApiError(err));
   }
 }

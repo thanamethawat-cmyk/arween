@@ -89,7 +89,8 @@ export function ProjectWorkspaceClient({
       setAction("");
       setMessage(
         `บันทึกแล้ว — Impact Score ${result.score.value}/10` +
-          (result.score.flagged ? " (ถูกตั้งธงตรวจสอบ)" : " (รอหัวหน้ายืนยัน)")
+          (result.agent1.usedGemini ? " (Gemini)" : " (โหมดสำรอง)") +
+          (result.score.flagged ? " · ถูกตั้งธงตรวจสอบ" : " · รอหัวหน้ายืนยัน")
       );
       router.refresh();
     } catch (err) {
@@ -147,6 +148,36 @@ export function ProjectWorkspaceClient({
         </Card>
 
         <InviteManager projectId={projectId} invites={invites} canInvite={isLead} />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <a
+          href={`/projects/${projectId}/hub`}
+          className="rounded-lg border bg-background px-4 py-3 text-sm hover:border-blue-400 transition-colors"
+        >
+          <p className="font-semibold">งานและเอกสาร</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            WorkItem + ลิงก์ Google Workspace
+          </p>
+        </a>
+        <a
+          href={`/projects/${projectId}/chat`}
+          className="rounded-lg border bg-background px-4 py-3 text-sm hover:border-blue-400 transition-colors"
+        >
+          <p className="font-semibold">แชท AI</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            ถาม-ตอบในบริบทโปรเจกต์นี้
+          </p>
+        </a>
+        <a
+          href={`/projects/${projectId}/evaluation`}
+          className="rounded-lg border bg-background px-4 py-3 text-sm hover:border-blue-400 transition-colors"
+        >
+          <p className="font-semibold">ประเมินทีม</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            ยืนยันคะแนน / สัดส่วน 100%
+          </p>
+        </a>
       </div>
 
       <Card>

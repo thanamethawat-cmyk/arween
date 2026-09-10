@@ -3,19 +3,19 @@ import { getServerSession } from "next-auth";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import { getProjectForUser } from "@/server/projects";
-import { getEvidenceByProject } from "@/server/collect";
+import { getProjectHub } from "@/server/facilitate";
 import { ProjectNav } from "@/components/project-nav";
-import { EvidenceClient } from "@/components/evidence-client";
+import { ProjectHubClient } from "@/components/project-hub-client";
 
-export default async function EvidencePage({
+export default async function ProjectHubPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id: string }> | { id: string };
 }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
 
-  const { id } = await params;
+  const { id } = await Promise.resolve(params);
 
   let data;
   try {
@@ -24,7 +24,7 @@ export default async function EvidencePage({
     notFound();
   }
 
-  const evidence = await getEvidenceByProject(id);
+  const hub = await getProjectHub(id);
 
   return (
     <div className="min-h-screen bg-muted/20">
@@ -34,16 +34,19 @@ export default async function EvidencePage({
             ← กลับรายการโปรเจกต์
           </Link>
           <h1 className="mt-2 text-xl font-bold">{data.project.name}</h1>
-          <p className="text-sm text-muted-foreground">ประวัติหลักฐาน</p>
+          <p className="text-sm text-muted-foreground">
+            งาน (WorkItem) และเอกสาร Google Workspace
+          </p>
         </div>
       </header>
-
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
         <ProjectNav projectId={id} />
-        <EvidenceClient
-          evidence={evidence}
+        <ProjectHubClient
           projectId={id}
           userId={session.user.id}
+          workItems={hub.workItems}
+          documents={hub.documents}
+          evidenceCount={hub.evidenceCount}
         />
       </main>
     </div>
