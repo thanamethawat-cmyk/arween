@@ -6,3 +6,5 @@ node_modules
 build_log.txt
 tsconfig.tsbuildinfo
 .DS_Store
+prisma/*.db
+prisma/*.db-journal

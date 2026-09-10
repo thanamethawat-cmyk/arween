@@ -39,8 +39,8 @@
 ```bash
 npm install
 cp .env.example .env
-# ใส่ DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL
-# (แนะนำ) GEMINI_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+# ค่าเริ่มต้นใช้ SQLite (file:./dev.db) — ไม่ต้องติดตั้ง Postgres
+# ถ้ามี Postgres/Docker ให้เปลี่ยน DATABASE_URL เป็น postgresql://...
 npm run db:setup
 npm run dev
 ```
