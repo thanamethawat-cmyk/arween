@@ -17,11 +17,13 @@ import {
   createDispute,
   resolveDispute,
   rejectDispute,
+  generateAndSaveTeamSummary,
 } from "@/server/evaluate";
 import {
   closeEvaluationPeriod,
   confirmAllPeriodScores,
   confirmContributionShares,
+  approveMeritCase,
 } from "@/server/periods";
 
 type Score = {
@@ -62,6 +64,8 @@ type Period = {
   periodStart: Date;
   periodEnd: Date;
   status: string;
+  meritStatus: string;
+  meritApprovedAt: Date | null;
   shares: {
     id: string;
     ratioPercent: number;
@@ -238,6 +242,12 @@ export function EvaluationClient({
               สัดส่วนผลงานรอบที่ปิด — {formatDate(period.periodStart)} ถึง{" "}
               {formatDate(period.periodEnd)}
             </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              เคสผลตอบแทน: {period.meritStatus}
+              {period.meritApprovedAt
+                ? ` · อนุมัติ ${formatDate(period.meritApprovedAt)}`
+                : ""}
+            </p>
           </CardHeader>
           <CardContent className="space-y-3">
             {period.shares.length === 0 ? (
@@ -270,15 +280,41 @@ export function EvaluationClient({
                     .toFixed(2)}
                   %
                 </p>
-                {isLead && period.shares.some((s) => !s.confirmed) && (
-                  <Button
-                    disabled={loading}
-                    onClick={() => run(() => confirmContributionShares(period.id))}
-                    className="bg-blue-600 text-white"
-                  >
-                    ยืนยันสัดส่วนรอบนี้
-                  </Button>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {isLead && period.shares.some((s) => !s.confirmed) && (
+                    <Button
+                      disabled={loading}
+                      onClick={() =>
+                        run(() => confirmContributionShares(period.id))
+                      }
+                      className="bg-blue-600 text-white"
+                    >
+                      ยืนยันสัดส่วนรอบนี้
+                    </Button>
+                  )}
+                  {period.shares.some((s) => s.confirmed) && (
+                    <Button
+                      variant="outline"
+                      disabled={loading}
+                      onClick={() => {
+                        window.location.href = `/api/projects/${projectId}/periods/${period.id}/export`;
+                      }}
+                    >
+                      Export CSV (Merit)
+                    </Button>
+                  )}
+                  {isLead &&
+                    period.shares.every((s) => s.confirmed) &&
+                    period.meritStatus !== "APPROVED" && (
+                      <Button
+                        disabled={loading}
+                        variant="outline"
+                        onClick={() => run(() => approveMeritCase(period.id))}
+                      >
+                        อนุมัติเคสผลตอบแทน
+                      </Button>
+                    )}
+                </div>
               </>
             )}
           </CardContent>
@@ -330,6 +366,15 @@ export function EvaluationClient({
           <CardTitle>สรุปผลทีม</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {isLead && (
+            <Button
+              disabled={loading}
+              variant="outline"
+              onClick={() => run(() => generateAndSaveTeamSummary(projectId))}
+            >
+              สร้างสรุปด้วย Gemini แล้วบันทึก
+            </Button>
+          )}
           {summaries.length === 0 ? (
             <p className="text-sm text-muted-foreground">ยังไม่มีสรุป</p>
           ) : (
@@ -338,7 +383,7 @@ export function EvaluationClient({
                 <p className="text-xs text-muted-foreground">
                   {formatDate(s.periodStart)} – {formatDate(s.periodEnd)}
                 </p>
-                <p className="mt-2 text-sm">{s.content}</p>
+                <p className="mt-2 text-sm whitespace-pre-wrap">{s.content}</p>
               </div>
             ))
           )}

@@ -213,18 +213,20 @@ enum NotificationType {
 }
 
 model EvaluationPeriod {
-  id          String              @id @default(cuid())
-  projectId   String
-  periodStart DateTime
-  periodEnd   DateTime
-  status      PeriodStatus        @default(OPEN)
-  closedAt    DateTime?
-  closedById  String?
-  createdAt   DateTime            @default(now())
-  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  closedBy    User?               @relation("PeriodClosedBy", fields: [closedById], references: [id])
-  scores      Score[]
-  shares      ContributionShare[]
+  id              String              @id @default(cuid())
+  projectId       String
+  periodStart     DateTime
+  periodEnd       DateTime
+  status          PeriodStatus        @default(OPEN)
+  closedAt        DateTime?
+  closedById      String?
+  meritStatus     String              @default("NONE")
+  meritApprovedAt DateTime?
+  createdAt       DateTime            @default(now())
+  project         Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  closedBy        User?               @relation("PeriodClosedBy", fields: [closedById], references: [id])
+  scores          Score[]
+  shares          ContributionShare[]
 
   @@index([projectId])
 }

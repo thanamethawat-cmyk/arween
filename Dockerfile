@@ -1,61 +1,53 @@
 FROM node:20-alpine AS base
 
-# Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
-
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci
 
-# Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p /app/public
-
-# Generate prisma client for existing schema
 RUN npx prisma generate
 
-# Firebase client build-time environment variables
-ARG NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyD5XbWrAjjBmc6iB1DmbyM9ck84jHnd380
-ARG NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=gen-lang-client-0084061289.firebaseapp.com
-ARG NEXT_PUBLIC_FIREBASE_PROJECT_ID=gen-lang-client-0084061289
-ARG NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=gen-lang-client-0084061289.firebasestorage.app
-ARG NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=619248313782
-ARG NEXT_PUBLIC_FIREBASE_APP_ID=1:619248313782:web:c919776236b1082470cd17
-
-ENV NEXT_PUBLIC_FIREBASE_API_KEY=$NEXT_PUBLIC_FIREBASE_API_KEY
-ENV NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-ENV NEXT_PUBLIC_FIREBASE_PROJECT_ID=$NEXT_PUBLIC_FIREBASE_PROJECT_ID
-ENV NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-ENV NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-ENV NEXT_PUBLIC_FIREBASE_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID
-
+ARG NEXTAUTH_URL=http://localhost:8080
+ARG NEXTAUTH_SECRET=build-time-placeholder-change-me
+ENV NEXTAUTH_URL=$NEXTAUTH_URL
+ENV NEXTAUTH_SECRET=$NEXTAUTH_SECRET
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/arween?schema=public"
+
 RUN npm run build
 
-# Production image, copy all the files and run next
 FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=8080
+ENV HOSTNAME=0.0.0.0
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN apk add --no-cache openssl \
+  && addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
-
-# Leverage standalone build
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/package.json ./package.json
+COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
+
+RUN chmod +x /app/docker-entrypoint.sh \
+  && chown nextjs:nodejs /app/docker-entrypoint.sh
 
 USER nextjs
-
 EXPOSE 8080
-ENV PORT=8080
-ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

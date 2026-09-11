@@ -47,6 +47,10 @@ export default async function ProjectHubPage({
           workItems={hub.workItems}
           documents={hub.documents}
           evidenceCount={hub.evidenceCount}
+          members={data.project.members.map((m) => ({
+            userId: m.user.id,
+            name: m.user.name,
+          }))}
         />
       </main>
     </div>

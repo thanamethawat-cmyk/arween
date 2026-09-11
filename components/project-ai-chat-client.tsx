@@ -23,12 +23,16 @@ export function ProjectAiChatClient({
   description,
   progressPercent,
   documentTitles,
+  objectives = [],
+  recentEvidence = [],
 }: {
   projectId: string;
   projectName: string;
   description: string | null;
   progressPercent: number;
   documentTitles: string[];
+  objectives?: string[];
+  recentEvidence?: string[];
 }) {
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -67,6 +71,8 @@ export function ProjectAiChatClient({
             description: description || undefined,
             currentProgress: progressPercent,
             connectedGoogleTools: documentTitles,
+            objectives,
+            recentEvidence,
           },
         }),
       });

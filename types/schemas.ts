@@ -42,6 +42,7 @@ export const createWorkItemSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
   status: workItemStatusSchema.optional(),
+  assigneeId: z.string().min(1).optional().nullable(),
 });
 
 export const updateWorkItemSchema = z.object({
@@ -49,6 +50,7 @@ export const updateWorkItemSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(2000).optional(),
   status: workItemStatusSchema.optional(),
+  assigneeId: z.string().min(1).optional().nullable(),
 });
 
 export const createDocumentSchema = z.object({

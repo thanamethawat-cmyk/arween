@@ -1,9 +1,12 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+/** ค่าเริ่มต้นที่เสถียรสำหรับนำร่อง */
+export const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
 export const GEMINI_API_KEY_MISSING_MESSAGE =
   "ยังไม่ได้ตั้งค่า GEMINI_API_KEY — กรุณาใส่คีย์ในไฟล์ .env แล้วรีสตาร์ทเซิร์ฟเวอร์";
+
+export const GEMINI_BILLING_URL = "https://aistudio.google.com/apikey";
 
 export function isGeminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY?.trim());
@@ -22,8 +25,12 @@ export function translateGeminiApiError(error: unknown): string {
   if (message.includes(GEMINI_API_KEY_MISSING_MESSAGE)) {
     return GEMINI_API_KEY_MISSING_MESSAGE;
   }
-  if (message.includes("prepayment credits are depleted") || message.includes("429")) {
-    return "โควตา Gemini หมดชั่วคราว — กรุณาเติมเครดิตที่ Google AI Studio แล้วลองใหม่";
+  if (
+    message.includes("prepayment credits are depleted") ||
+    message.includes("RESOURCE_EXHAUSTED") ||
+    message.includes("429")
+  ) {
+    return `โควตา Gemini หมดชั่วคราว — เติมเครดิตที่ ${GEMINI_BILLING_URL} และตรวจว่า GEMINI_MODEL=gemini-2.0-flash`;
   }
   if (message.includes("API key not valid") || message.includes("API_KEY_INVALID")) {
     return "คีย์ GEMINI_API_KEY ไม่ถูกต้อง กรุณาตรวจสอบในไฟล์ .env";
@@ -99,6 +106,8 @@ export type ProjectChatContext = {
   description?: string;
   currentProgress: number;
   connectedGoogleTools?: string[];
+  objectives?: string[];
+  recentEvidence?: string[];
 };
 
 export async function continueMultiTurnChat(
@@ -116,10 +125,20 @@ export async function continueMultiTurnChat(
         )}\n`
       : "ยังไม่มีเครื่องมือ Google ที่เชื่อม\n";
 
+  const objectivesNote =
+    projectContext?.objectives && projectContext.objectives.length > 0
+      ? `เป้าหมาย (Anchor):\n- ${projectContext.objectives.join("\n- ")}\n`
+      : "ยังไม่มี Objective/Milestone ในแผน\n";
+
+  const evidenceNote =
+    projectContext?.recentEvidence && projectContext.recentEvidence.length > 0
+      ? `หลักฐานล่าสุด:\n- ${projectContext.recentEvidence.join("\n- ")}\n`
+      : "";
+
   const contextNote = projectContext
     ? `[บริบทโปรเจกต์ ARWEEN: "${projectContext.title}" ความคืบหน้ารวม ${
         projectContext.currentProgress
-      }% คำอธิบาย: ${projectContext.description || "ไม่มี"}]\n${toolsNote}ตอบเฉพาะเรื่องโปรเจกต์นี้เท่านั้น\n`
+      }% คำอธิบาย: ${projectContext.description || "ไม่มี"}]\n${objectivesNote}${toolsNote}${evidenceNote}ตอบเฉพาะเรื่องโปรเจกต์นี้เท่านั้น\n`
     : "";
 
   const chat = model.startChat({

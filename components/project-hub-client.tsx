@@ -26,12 +26,18 @@ type WorkItem = {
   title: string;
   description: string | null;
   status: string;
+  assigneeId: string | null;
 };
 
 type Document = {
   id: string;
   title: string;
   url: string;
+};
+
+type Member = {
+  userId: string;
+  name: string;
 };
 
 const GOOGLE_TYPES = [
@@ -58,12 +64,14 @@ export function ProjectHubClient({
   workItems,
   documents,
   evidenceCount,
+  members,
 }: {
   projectId: string;
   userId: string;
   workItems: WorkItem[];
   documents: Document[];
   evidenceCount: number;
+  members: Member[];
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -100,6 +108,7 @@ export function ProjectHubClient({
           actorId: userId,
           title: data.get("title") as string,
           description: (data.get("description") as string) || undefined,
+          assigneeId: (data.get("assigneeId") as string) || null,
         }),
       "สร้างงานและบันทึกหลักฐานแล้ว"
     );
@@ -115,6 +124,22 @@ export function ProjectHubClient({
         status: status as "TODO" | "IN_PROGRESS" | "DONE" | "BLOCKED",
       })
     );
+  }
+
+  async function handleAssigneeChange(workItemId: string, assigneeId: string) {
+    await run(() =>
+      updateWorkItem({
+        id: workItemId,
+        projectId,
+        actorId: userId,
+        assigneeId: assigneeId || null,
+      })
+    );
+  }
+
+  function memberName(id: string | null) {
+    if (!id) return "ยังไม่มอบหมาย";
+    return members.find((m) => m.userId === id)?.name || "สมาชิก";
   }
 
   async function handleAddDocument(e: React.FormEvent<HTMLFormElement>) {
@@ -220,8 +245,11 @@ export function ProjectHubClient({
                         {item.description}
                       </p>
                     )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ผู้รับผิดชอบ: {memberName(item.assigneeId)}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="secondary">
                       {WORK_ITEM_STATUS_LABELS[item.status] ?? item.status}
                     </Badge>
@@ -241,6 +269,21 @@ export function ProjectHubClient({
                         )
                       )}
                     </select>
+                    <select
+                      className="rounded border border-border px-2 py-1 text-sm"
+                      value={item.assigneeId || ""}
+                      disabled={loading}
+                      onChange={(e) =>
+                        handleAssigneeChange(item.id, e.target.value)
+                      }
+                    >
+                      <option value="">ยังไม่มอบหมาย</option>
+                      {members.map((m) => (
+                        <option key={m.userId} value={m.userId}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </li>
               ))}
@@ -251,6 +294,18 @@ export function ProjectHubClient({
             <p className="text-sm font-medium">เพิ่มงานใหม่</p>
             <Input name="title" placeholder="ชื่องาน" required />
             <Textarea name="description" placeholder="รายละเอียด (ไม่บังคับ)" />
+            <select
+              name="assigneeId"
+              className="w-full rounded border border-border px-2 py-2 text-sm"
+              defaultValue=""
+            >
+              <option value="">ยังไม่มอบหมาย</option>
+              {members.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
             <Button type="submit" disabled={loading} className="bg-blue-600 text-white">
               สร้างงาน
             </Button>

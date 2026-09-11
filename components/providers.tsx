@@ -1,12 +1,8 @@
 "use client";
 
 import { SessionProvider } from "next-auth/react";
-import { AuthProvider } from "@/context/auth-context";
 
+/** UX หลักใช้ NextAuth เท่านั้น — ไม่ห่อ Firebase Auth อีกต่อไป */
 export function Providers({ children }: { children: React.ReactNode }) {
-  return (
-    <SessionProvider>
-      <AuthProvider>{children}</AuthProvider>
-    </SessionProvider>
-  );
+  return <SessionProvider>{children}</SessionProvider>;
 }

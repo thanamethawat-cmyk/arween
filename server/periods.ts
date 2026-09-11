@@ -140,7 +140,116 @@ export async function confirmContributionShares(periodId: string) {
     data: { confirmed: true },
   });
 
+  await prisma.evaluationPeriod.update({
+    where: { id: periodId },
+    data: { meritStatus: "DRAFT" },
+  });
+
   revalidatePath(`/projects/${period.projectId}/evaluation`);
+}
+
+/** อนุมัติเคสผลตอบแทนจากสัดส่วนที่ยืนยันแล้ว — ยังไม่จ่ายเงินอัตโนมัติ */
+export async function approveMeritCase(periodId: string) {
+  const period = await prisma.evaluationPeriod.findUnique({
+    where: { id: periodId },
+    include: { shares: true },
+  });
+  if (!period) throw new Error("ไม่พบรอบประเมิน");
+  await requireLead(period.projectId);
+
+  if (period.status !== "CLOSED") {
+    throw new Error("ต้องปิดรอบก่อนอนุมัติเคสผลตอบแทน");
+  }
+  if (period.shares.length === 0) {
+    throw new Error("ยังไม่มีสัดส่วนผลงานในรอบนี้");
+  }
+  if (period.shares.some((s) => !s.confirmed)) {
+    throw new Error("ต้องยืนยันสัดส่วนทั้งหมดก่อนอนุมัติเคส");
+  }
+
+  await prisma.evaluationPeriod.update({
+    where: { id: periodId },
+    data: {
+      meritStatus: "APPROVED",
+      meritApprovedAt: new Date(),
+    },
+  });
+
+  revalidatePath(`/projects/${period.projectId}/evaluation`);
+}
+
+/** สร้าง CSV ของ ContributionShare ที่ยืนยันแล้ว (Merit export v1) */
+export async function buildConfirmedSharesCsv(periodId: string) {
+  const user = await requireSessionUser();
+  const period = await prisma.evaluationPeriod.findUnique({
+    where: { id: periodId },
+    include: {
+      shares: {
+        include: { user: { select: { name: true, email: true } } },
+        orderBy: { ratioPercent: "desc" },
+      },
+      project: { select: { id: true, name: true } },
+    },
+  });
+  if (!period) throw new Error("ไม่พบรอบประเมิน");
+
+  const membership = await prisma.projectMember.findUnique({
+    where: {
+      projectId_userId: {
+        projectId: period.projectId,
+        userId: user.id,
+      },
+    },
+  });
+  if (
+    !membership &&
+    user.role !== "ADMIN" &&
+    user.role !== "LEAD"
+  ) {
+    throw new Error("คุณไม่ใช่สมาชิกของโปรเจกต์นี้");
+  }
+
+  const confirmed = period.shares.filter((s) => s.confirmed);
+  if (confirmed.length === 0) {
+    throw new Error("ยังไม่มีสัดส่วนที่ยืนยันแล้วสำหรับ export");
+  }
+
+  const header = [
+    "projectId",
+    "projectName",
+    "periodId",
+    "periodStart",
+    "periodEnd",
+    "meritStatus",
+    "userName",
+    "userEmail",
+    "ratioPercent",
+    "impactSum",
+    "confirmed",
+  ];
+  const rows = confirmed.map((s) =>
+    [
+      period.project.id,
+      period.project.name,
+      period.id,
+      period.periodStart.toISOString(),
+      period.periodEnd.toISOString(),
+      period.meritStatus,
+      s.user.name,
+      s.user.email,
+      s.ratioPercent.toFixed(2),
+      s.impactSum.toFixed(2),
+      String(s.confirmed),
+    ]
+      .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
+      .join(",")
+  );
+
+  return {
+    filename: `arween-merit-${period.projectId}-${period.id}.csv`,
+    csv: [header.join(","), ...rows].join("\n"),
+    projectId: period.projectId,
+  };
 }
 
 export async function confirmAllPeriodScores(periodId: string) {

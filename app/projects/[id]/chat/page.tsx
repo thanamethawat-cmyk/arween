@@ -24,12 +24,47 @@ export default async function ProjectChatPage({
     notFound();
   }
 
-  const documents = await prisma.documentRef.findMany({
-    where: { projectId: id },
-    select: { title: true, url: true },
-    orderBy: { createdAt: "desc" },
-    take: 20,
-  });
+  const [documents, objectives, evidence] = await Promise.all([
+    prisma.documentRef.findMany({
+      where: { projectId: id },
+      select: { title: true, url: true },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+    prisma.objective.findMany({
+      where: { projectId: id },
+      include: {
+        milestones: {
+          include: { kpis: true },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
+      orderBy: { sortOrder: "asc" },
+    }),
+    prisma.evidenceEvent.findMany({
+      where: { projectId: id },
+      orderBy: { occurredAt: "desc" },
+      take: 12,
+      include: { actor: { select: { name: true } } },
+    }),
+  ]);
+
+  const objectiveLines = objectives.flatMap((obj) =>
+    obj.milestones.map((ms) => {
+      const kpiText =
+        ms.kpis.length > 0
+          ? ` | KPI: ${ms.kpis.map((k) => k.name).join(", ")}`
+          : "";
+      return `Objective "${obj.name}" → Milestone "${ms.name}" (${ms.status})${kpiText}`;
+    })
+  );
+
+  const evidenceLines = evidence.map(
+    (e) =>
+      `${e.actor.name}: ${e.action.slice(0, 120)}${
+        e.action.length > 120 ? "…" : ""
+      }`
+  );
 
   return (
     <div className="min-h-screen bg-muted/20">
@@ -51,9 +86,9 @@ export default async function ProjectChatPage({
           projectName={data.project.name}
           description={data.project.description}
           progressPercent={data.project.progressPercent}
-          documentTitles={documents.map(
-            (d) => `${d.title} (${d.url})`
-          )}
+          documentTitles={documents.map((d) => `${d.title} (${d.url})`)}
+          objectives={objectiveLines}
+          recentEvidence={evidenceLines}
         />
       </main>
     </div>

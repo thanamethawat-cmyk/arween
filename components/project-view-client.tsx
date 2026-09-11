@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * @deprecated LEGACY Firebase project UI — ไม่ถูกผูก route ใน App Router แล้ว
+ * ใช้ `/projects/[id]` (Prisma) แทน
+ */
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

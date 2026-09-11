@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * @deprecated LEGACY Firebase auth — ไม่ถูกห่อใน Providers แล้ว
+ * UX หลักใช้ NextAuth + Prisma เท่านั้น ไฟล์นี้เก็บไว้เป็นต้นแบบสาธิตเก่า
+ */
 import React, { createContext, useContext, useEffect, useState } from "react";
 import {
   User,

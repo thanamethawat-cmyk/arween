@@ -25,11 +25,16 @@ export async function createWorkItem(input: {
   title: string;
   description?: string;
   status?: "TODO" | "IN_PROGRESS" | "DONE" | "BLOCKED";
+  assigneeId?: string | null;
   actorId: string;
 }) {
   const user = await requireSessionUser();
   await requireMembership(input.projectId, user.id);
   const parsed = createWorkItemSchema.parse(input);
+
+  if (parsed.assigneeId) {
+    await requireMembership(parsed.projectId, parsed.assigneeId);
+  }
 
   const item = await prisma.workItem.create({
     data: {
@@ -37,6 +42,7 @@ export async function createWorkItem(input: {
       title: parsed.title,
       description: parsed.description,
       status: parsed.status ?? "TODO",
+      assigneeId: parsed.assigneeId ?? null,
     },
   });
 
@@ -45,7 +51,7 @@ export async function createWorkItem(input: {
     actorId: user.id,
     action: `สร้างงาน: ${parsed.title}`,
     source: "WORK_ITEM",
-    metadata: { workItemId: item.id },
+    metadata: { workItemId: item.id, assigneeId: item.assigneeId },
   });
 
   revalidatePath(`/projects/${parsed.projectId}`);
@@ -59,6 +65,7 @@ export async function updateWorkItem(input: {
   title?: string;
   description?: string;
   status?: "TODO" | "IN_PROGRESS" | "DONE" | "BLOCKED";
+  assigneeId?: string | null;
   actorId: string;
   projectId: string;
 }) {
@@ -66,12 +73,19 @@ export async function updateWorkItem(input: {
   await requireMembership(input.projectId, user.id);
   const parsed = updateWorkItemSchema.parse(input);
 
+  if (parsed.assigneeId) {
+    await requireMembership(input.projectId, parsed.assigneeId);
+  }
+
   const item = await prisma.workItem.update({
     where: { id: parsed.id },
     data: {
       title: parsed.title,
       description: parsed.description,
       status: parsed.status,
+      ...(parsed.assigneeId !== undefined
+        ? { assigneeId: parsed.assigneeId }
+        : {}),
     },
   });
 
@@ -82,13 +96,18 @@ export async function updateWorkItem(input: {
   if (parsed.title) {
     actionParts.push(`แก้ไขชื่องาน: ${parsed.title}`);
   }
+  if (parsed.assigneeId !== undefined) {
+    actionParts.push(
+      parsed.assigneeId ? "มอบหมายผู้รับผิดชอบ" : "ถอนผู้รับผิดชอบ"
+    );
+  }
 
   await recordEvidence({
     projectId: input.projectId,
     actorId: user.id,
     action: actionParts.join(" — ") || `อัปเดตงาน: ${item.title}`,
     source: "STATUS_UPDATE",
-    metadata: { workItemId: item.id },
+    metadata: { workItemId: item.id, assigneeId: item.assigneeId },
   });
 
   revalidatePath(`/projects/${input.projectId}`);

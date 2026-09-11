@@ -76,6 +76,64 @@ export async function saveTeamSummary(input: {
   return summary;
 }
 
+/** เรียก Gemini สรุปทีมจากหลักฐานล่าสุด แล้วบันทึก TeamSummary */
+export async function generateAndSaveTeamSummary(projectId: string) {
+  await requireLead(projectId);
+
+  const { summarizeProjectStatus, isGeminiConfigured } = await import(
+    "@/lib/gemini"
+  );
+  if (!isGeminiConfigured()) {
+    throw new Error("ยังไม่ได้ตั้งค่า GEMINI_API_KEY");
+  }
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { name: true, description: true },
+  });
+  if (!project) throw new Error("ไม่พบโปรเจกต์");
+
+  const evidence = await prisma.evidenceEvent.findMany({
+    where: { projectId },
+    orderBy: { occurredAt: "desc" },
+    take: 20,
+    include: {
+      actor: { select: { name: true } },
+      scores: { select: { value: true }, take: 1 },
+    },
+  });
+
+  const dailyLogs = evidence.map((e) => ({
+    date: e.occurredAt.toISOString().slice(0, 10),
+    summary: `${e.actor.name}: ${e.action}`,
+    meritScore: e.scores[0]?.value ?? 0,
+  }));
+
+  const result = await summarizeProjectStatus(
+    project.name,
+    project.description || "",
+    dailyLogs
+  );
+
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 7);
+
+  const content = [
+    result.executiveSummary,
+    "",
+    "ข้อเสนอแนะ:",
+    ...(result.recommendations || []).map((r) => `- ${r}`),
+  ].join("\n");
+
+  return saveTeamSummary({
+    projectId,
+    content,
+    periodStart: start,
+    periodEnd: end,
+  });
+}
+
 export async function createDispute(input: {
   projectId: string;
   userId: string;
