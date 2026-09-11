@@ -222,6 +222,8 @@ model EvaluationPeriod {
   closedById      String?
   meritStatus     String              @default("NONE")
   meritApprovedAt DateTime?
+  poolAmount      Float?
+  currency        String              @default("THB")
   createdAt       DateTime            @default(now())
   project         Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   closedBy        User?               @relation("PeriodClosedBy", fields: [closedById], references: [id])
@@ -243,11 +245,24 @@ model ContributionShare {
   ratioPercent  Float
   impactSum     Float
   confirmed     Boolean          @default(false)
+  payoutAmount  Float?
+  payoutStatus  String           @default("PENDING")
   createdAt     DateTime         @default(now())
   period        EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
   user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([periodId, userId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  projectId String
+  actorId   String
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
 }
 
 model Dispute {

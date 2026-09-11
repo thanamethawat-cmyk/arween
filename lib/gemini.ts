@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-/** ค่าเริ่มต้นที่เสถียรสำหรับนำร่อง */
-export const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+/** ค่าเริ่มต้นที่เสถียรสำหรับนำร่อง (Gemini API แนะนำ gemini-3.6-flash) */
+export const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
 export const GEMINI_API_KEY_MISSING_MESSAGE =
   "ยังไม่ได้ตั้งค่า GEMINI_API_KEY — กรุณาใส่คีย์ในไฟล์ .env แล้วรีสตาร์ทเซิร์ฟเวอร์";
@@ -30,13 +30,17 @@ export function translateGeminiApiError(error: unknown): string {
     message.includes("RESOURCE_EXHAUSTED") ||
     message.includes("429")
   ) {
-    return `โควตา Gemini หมดชั่วคราว — เติมเครดิตที่ ${GEMINI_BILLING_URL} และตรวจว่า GEMINI_MODEL=gemini-2.0-flash`;
+    return `โควตา Gemini หมดชั่วคราว — เติมเครดิตที่ ${GEMINI_BILLING_URL} และตรวจว่า GEMINI_MODEL=${DEFAULT_MODEL}`;
   }
   if (message.includes("API key not valid") || message.includes("API_KEY_INVALID")) {
     return "คีย์ GEMINI_API_KEY ไม่ถูกต้อง กรุณาตรวจสอบในไฟล์ .env";
   }
-  if (message.includes("is not found") || message.includes("no longer available")) {
-    return "รุ่นโมเดล Gemini ไม่พร้อมใช้งาน — ตั้งค่า GEMINI_MODEL ใน .env เป็นรุ่นที่รองรับ";
+  if (
+    message.includes("is not found") ||
+    message.includes("no longer available") ||
+    message.includes("404")
+  ) {
+    return `รุ่นโมเดล Gemini ไม่พร้อมใช้งาน — ตั้งค่า GEMINI_MODEL=${DEFAULT_MODEL} (หรือรุ่นที่ Google แนะนำล่าสุด) ใน .env แล้วรีสตาร์ทเซิร์ฟเวอร์`;
   }
   if (message.includes("รูปแบบที่ไม่ถูกต้อง")) {
     return message;
@@ -201,7 +205,9 @@ ${logContent}
   try {
     const data = parseJsonFromModelText(text) as Record<string, unknown>;
     return {
-      meritScore: Number(data.meritScore) || 5,
+      meritScore: Number.isFinite(Number(data.meritScore))
+        ? Math.min(10, Math.max(1, Math.round(Number(data.meritScore))))
+        : 5,
       rationale:
         typeof data.rationale === "string"
           ? data.rationale

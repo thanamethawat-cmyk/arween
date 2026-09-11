@@ -1,45 +1,73 @@
 # Pilot checklist — นำร่องกับ 1–2 ทีมจริง
 
-ใช้หลังตั้ง Postgres โลคอล + seed แล้ว (ดู [deploy.md](./deploy.md))
+ใช้หลังตั้ง Postgres โลคอล + seed แล้ว (ดู [deploy.md](./deploy.md)) หรือทดสอบบน SQLite โลคอลทันที
 
-## เตรียมระบบ
+## 1. ทีมนำร่องในระบบ (2 ทีมจริง)
 
-- [ ] `docker compose up -d db`
-- [ ] `.env` ชี้ `DATABASE_URL` ไป Postgres + `GEMINI_MODEL=gemini-2.0-flash`
-- [ ] `npm run db:setup` และ `npm run dev`
-- [ ] เปิด http://localhost:3000 ล็อกอิน `lead@arween.demo` / `demo1234`
-- [ ] (ถ้ามี) ตั้ง `GOOGLE_CLIENT_ID` / `SECRET` แล้วลองปุ่ม Google บน login
+### ทีมที่ 1: ทีมวิศวกรรมแพลตฟอร์ม (`pilot-team-eng`)
+- **เป้าหมายหลัก**: พัฒนา Core Architecture, Connection Pooling, สิทธิ์สมาชิก API 100%, และ CI/CD Cloud Run
+- **หัวหน้าโปรเจกต์**: `eng.lead@arween.demo` / `demo1234`
+- **สมาชิก Backend**: `dev.backend@arween.demo` / `demo1234`
+- **สมาชิก Frontend**: `dev.frontend@arween.demo` / `demo1234`
+- **ลิงก์เชิญเข้าร่วมทีม**: `/invite/invite-eng-squad-2026`
 
-## Flow ทีม (หัวหน้า)
+### ทีมที่ 2: ทีมปฏิบัติการและการเติบโต (`pilot-team-ops`)
+- **เป้าหมายหลัก**: ออนบอร์ดลูกค้าองค์กรนำร่อง 5 แห่ง, ยกระดับ SLA < 15 นาที, และจัดทำคู่มือ Playbook
+- **หัวหน้าโปรเจกต์**: `ops.lead@arween.demo` / `demo1234`
+- **สมาชิก Customer Success**: `ops.support@arween.demo` / `demo1234`
+- **สมาชิก Partnership**: `ops.partner@arween.demo` / `demo1234`
+- **ลิงก์เชิญเข้าร่วมทีม**: `/invite/invite-ops-squad-2026`
 
-- [ ] สร้างโปรเจกต์ใหม่หรือใช้ `project-demo-001`
-- [ ] แท็บ **แผนเป้าหมาย** — ตั้ง Objective / Milestone / KPI
-- [ ] เชิญสมาชิกด้วยอีเมล Google (ลิงก์ 7 วัน)
-- [ ] แท็บ **งานและเอกสาร** — สร้าง WorkItem มอบหมายผู้รับผิดชอบ + ใส่ลิงก์ Docs
-- [ ] บันทึกงานรายวันบนภาพรวม → ได้ Impact Score (Gemini)
-- [ ] แท็บ **ประเมิน** — ยืนยันคะแนน → ปิดรอบ → ยืนยันสัดส่วน 100%
-- [ ] Export CSV (Merit) และ/หรืออนุมัติเคสผลตอบแทน
-- [ ] สร้างสรุปทีมด้วย Gemini
+---
 
-## Flow สมาชิก
+## 2. การเตรียมระบบ & การทดสอบอัตโนมัติ
 
-- [ ] รับลิงก์เชิญ → เข้าด้วย Google
-- [ ] เห็นโปรเจกต์ในรายการ / บันทึกงาน / เปลี่ยนสถานะงาน
-- [ ] ยื่น **โต้แย้ง** จากคะแนนของตนได้
-- [ ] ถามแชท AI บริบทโปรเจกต์ได้
+```bash
+# เตรียมฐานข้อมูลและ Seed ทั้ง 2 ทีม
+npm run db:setup
 
-## เก็บ feedback
+# รันการจำลองและทดสอบวงจรนำร่องทั้ง 2 ทีมแบบ End-to-End
+npm run pilot:simulate
 
-- [ ] จุดที่ติด / ข้อความภาษาไทยไม่ชัด
-- [ ] Google OAuth / invite ใช้ได้จริงหรือไม่
-- [ ] คะแนน Agent 1 สมเหตุสมผลหรือไม่
-- [ ] ตัดสินใจว่าพร้อมเปิด Merit export กับทีมถัดไปหรือยัง
+# เริ่มเซิร์ฟเวอร์สำหรับทดสอบหน้าเว็บ
+npm run dev
+```
 
-## ลิงก์ตรวจเร็ว
+---
 
-- http://localhost:3000/
-- http://localhost:3000/projects/project-demo-001
-- http://localhost:3000/projects/project-demo-001/hub
-- http://localhost:3000/projects/project-demo-001/chat
-- http://localhost:3000/projects/project-demo-001/evaluation
-- http://localhost:3000/api/ai/health
+## 3. Flow การนำร่องจริง (Checklist)
+
+### ฝั่งหัวหน้าทีม (Lead)
+- [ ] เข้าสู่ระบบ (สามารถกดปุ่มคลิกเลือกบัญชีนำร่องด้านล่างฟอร์ม Login ได้ทันที)
+- [ ] ตรวจสอบแท็บ **แผนเป้าหมาย** (`/projects/[id]/plan`): Objective / Milestone / KPI
+- [ ] ทดลองสร้างงานและมอบหมายใน **งานและเอกสาร** (`/projects/[id]/hub`) พร้อมระบุผู้รับผิดชอบ (`assigneeId`)
+- [ ] ไปที่แท็บ **ประเมิน** (`/projects/[id]/evaluation`):
+  - ตรวจสอบคะแนนที่ AI ประเมินให้สมาชิก
+  - กด **"หัวหน้ายืนยัน"** คะแนนที่ถูกต้อง
+  - กด **"ปิดรอบและคำนวณสัดส่วน"** (Agent 2 จะ Normalization สัดส่วนรวมเป็น 100.00% พอดี)
+  - กด **"ยืนยันสัดส่วนทั้งหมด"**
+  - กด **"Export CSV (Merit)"** เพื่อดาวน์โหลดสรุปไปใช้กับฝ่ายการเงิน/HR
+  - กด **"สร้างสรุปด้วย Gemini แล้วบันทึก"** เพื่อสร้างบทวิเคราะห์ทีมของผู้บริหาร
+
+### ฝั่งสมาชิกทีม (Member)
+- [ ] เข้าสู่ระบบด้วยอีเมลสมาชิก หรือรับลิงก์เชิญ Google OAuth
+- [ ] บันทึกงานรายวัน (Daily Log) บนหน้าภาพรวมโปรเจกต์
+- [ ] สังเกตการให้คะแนน Impact Score ของ Gemini และคำอธิบายเชิงพฤติกรรม (Audit Trail)
+- [ ] หากพบว่าคะแนนไม่สะท้อนเนื้องานจริง สามารถกดยื่น **"โต้แย้ง"** พร้อมระบุเหตุผลได้ทันที
+- [ ] ทดลองถาม **แชท AI ในบริบทโปรเจกต์** (`/projects/[id]/chat`) เกี่ยวกับ Milestone และงานที่คั่งค้าง
+
+---
+
+## 4. แบบประเมินและรวบรวม Feedback การนำร่อง
+- [ ] **คะแนนความแม่นยำของ AI**: งานเบื้องหลัง (Back-office/Infra) ได้รับการประเมินอย่างเป็นธรรมหรือไม่?
+- [ ] **Anti-Gaming**: ข้อความตอบรับสั้นหรือสแปมถูกตรวจจับและลดคะแนน/ตั้งธงถูกต้องหรือไม่?
+- [ ] **ภาษาและถ้อยคำ**: คำอธิบายเหตุผลภาษาไทยมีความชัดเจนและสร้างขวัญกำลังใจหรือไม่?
+- [ ] **Merit Readiness**: ฝ่ายบริหารเห็นพ้องกับสัดส่วน ContributionShare 100% ที่คำนวณได้หรือไม่?
+
+---
+
+## 5. ลิงก์ตรวจเร็ว
+- หน้าหลัก: http://localhost:3000/
+- ทีมวิศวกรรม: http://localhost:3000/projects/pilot-team-eng
+- ทีมปฏิบัติการ: http://localhost:3000/projects/pilot-team-ops
+- AI Health: http://localhost:3000/api/ai/health

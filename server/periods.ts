@@ -145,6 +145,62 @@ export async function confirmContributionShares(periodId: string) {
     data: { meritStatus: "DRAFT" },
   });
 
+  await prisma.auditLog.create({
+    data: {
+      projectId: period.projectId,
+      actorId: period.closedById || "LEAD",
+      action: "CONFIRM_SHARES",
+      details: "หัวหน้ายืนยันสัดส่วน ContributionShare 100% ในรอบประเมิน",
+    },
+  });
+
+  revalidatePath(`/projects/${period.projectId}/evaluation`);
+}
+
+/** ตั้งค่างบประมาณโบนัส (Bonus Pool) และคำนวณยอดเงินผลตอบแทนรายบุคคล */
+export async function setPeriodBonusPool(
+  periodId: string,
+  poolAmount: number,
+  currency: string = "THB"
+) {
+  const period = await prisma.evaluationPeriod.findUnique({
+    where: { id: periodId },
+    include: { shares: true },
+  });
+  if (!period) throw new Error("ไม่พบรอบประเมิน");
+  const user = await requireLead(period.projectId);
+
+  if (poolAmount < 0) {
+    throw new Error("งบประมาณโบนัสต้องไม่ติดลบ");
+  }
+
+  await prisma.$transaction([
+    prisma.evaluationPeriod.update({
+      where: { id: periodId },
+      data: {
+        poolAmount,
+        currency,
+      },
+    }),
+    ...period.shares.map((share) => {
+      const payout = Math.round((poolAmount * (share.ratioPercent / 100)) * 100) / 100;
+      return prisma.contributionShare.update({
+        where: { id: share.id },
+        data: {
+          payoutAmount: payout,
+        },
+      });
+    }),
+    prisma.auditLog.create({
+      data: {
+        projectId: period.projectId,
+        actorId: user.id,
+        action: "SET_BONUS_POOL",
+        details: `กำหนดงบประมาณโบนัส ${poolAmount.toLocaleString()} ${currency}`,
+      },
+    }),
+  ]);
+
   revalidatePath(`/projects/${period.projectId}/evaluation`);
 }
 
@@ -155,7 +211,7 @@ export async function approveMeritCase(periodId: string) {
     include: { shares: true },
   });
   if (!period) throw new Error("ไม่พบรอบประเมิน");
-  await requireLead(period.projectId);
+  const user = await requireLead(period.projectId);
 
   if (period.status !== "CLOSED") {
     throw new Error("ต้องปิดรอบก่อนอนุมัติเคสผลตอบแทน");
@@ -167,13 +223,27 @@ export async function approveMeritCase(periodId: string) {
     throw new Error("ต้องยืนยันสัดส่วนทั้งหมดก่อนอนุมัติเคส");
   }
 
-  await prisma.evaluationPeriod.update({
-    where: { id: periodId },
-    data: {
-      meritStatus: "APPROVED",
-      meritApprovedAt: new Date(),
-    },
-  });
+  await prisma.$transaction([
+    prisma.evaluationPeriod.update({
+      where: { id: periodId },
+      data: {
+        meritStatus: "APPROVED",
+        meritApprovedAt: new Date(),
+      },
+    }),
+    prisma.contributionShare.updateMany({
+      where: { periodId },
+      data: { payoutStatus: "APPROVED" },
+    }),
+    prisma.auditLog.create({
+      data: {
+        projectId: period.projectId,
+        actorId: user.id,
+        action: "APPROVE_MERIT_CASE",
+        details: `อนุมัติเคสผลตอบแทน Merit-to-Earn สำเร็จ (${period.shares.length} คน)`,
+      },
+    }),
+  ]);
 
   revalidatePath(`/projects/${period.projectId}/evaluation`);
 }
@@ -214,6 +284,15 @@ export async function buildConfirmedSharesCsv(periodId: string) {
     throw new Error("ยังไม่มีสัดส่วนที่ยืนยันแล้วสำหรับ export");
   }
 
+  await prisma.auditLog.create({
+    data: {
+      projectId: period.projectId,
+      actorId: user.id,
+      action: "EXPORT_MERIT_CSV",
+      details: `Export สรุปสัดส่วนผลตอบแทน CSV (${confirmed.length} คน)`,
+    },
+  });
+
   const header = [
     "projectId",
     "projectName",
@@ -221,33 +300,40 @@ export async function buildConfirmedSharesCsv(periodId: string) {
     "periodStart",
     "periodEnd",
     "meritStatus",
+    "poolAmount",
+    "currency",
     "userName",
     "userEmail",
     "ratioPercent",
     "impactSum",
+    "payoutAmount",
+    "payoutStatus",
     "confirmed",
   ];
   const rows = confirmed.map((s) =>
     [
       period.project.id,
-      period.project.name,
+      `"${period.project.name.replace(/"/g, '""')}"`,
       period.id,
-      period.periodStart.toISOString(),
-      period.periodEnd.toISOString(),
+      period.periodStart.toISOString().slice(0, 10),
+      period.periodEnd.toISOString().slice(0, 10),
       period.meritStatus,
-      s.user.name,
+      period.poolAmount ? period.poolAmount.toFixed(2) : "0.00",
+      period.currency || "THB",
+      `"${s.user.name.replace(/"/g, '""')}"`,
       s.user.email,
       s.ratioPercent.toFixed(2),
       s.impactSum.toFixed(2),
+      s.payoutAmount !== null && s.payoutAmount !== undefined ? s.payoutAmount.toFixed(2) : "0.00",
+      s.payoutStatus || "PENDING",
       String(s.confirmed),
-    ]
-      .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
-      .join(",")
+    ].join(",")
   );
 
+  const filename = `merit-shares-${period.project.name.replace(/[^a-zA-Z0-9ก-๙_-]/g, "_")}-${period.id.slice(-6)}.csv`;
   return {
-    filename: `arween-merit-${period.projectId}-${period.id}.csv`,
-    csv: [header.join(","), ...rows].join("\n"),
+    filename,
+    csv: "\uFEFF" + [header.join(","), ...rows].join("\n"),
     projectId: period.projectId,
   };
 }

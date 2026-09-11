@@ -7,10 +7,10 @@ export type Agent3Result = {
 const ACK_PATTERNS = [
   /^รับทราบ/,
   /^ขอบคุณ/,
-  /^โอเค$/,
-  /^ok$/i,
-  /^ครับ$/,
-  /^ค่ะ$/,
+  /^โอเค/,
+  /^ok/i,
+  /^ครับ/,
+  /^ค่ะ/,
 ];
 
 /** Agent 3: ตรวจสัญญาณปั่นคะแนน / Activity Bias */

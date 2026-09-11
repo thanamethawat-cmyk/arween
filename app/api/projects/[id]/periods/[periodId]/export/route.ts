@@ -3,10 +3,14 @@ import { buildConfirmedSharesCsv } from "@/server/periods";
 
 export async function GET(
   _req: NextRequest,
-  context: { params: Promise<{ id: string; periodId: string }> }
+  context: {
+    params:
+      | Promise<{ id: string; periodId: string }>
+      | { id: string; periodId: string };
+  }
 ) {
   try {
-    const { periodId } = await context.params;
+    const { periodId } = await Promise.resolve(context.params);
     const result = await buildConfirmedSharesCsv(periodId);
     return new NextResponse(result.csv, {
       status: 200,

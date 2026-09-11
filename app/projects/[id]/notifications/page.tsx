@@ -10,12 +10,12 @@ import { NotificationsClient } from "@/components/notifications-client";
 export default async function NotificationsPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id: string }> | { id: string };
 }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
 
-  const { id } = await params;
+  const { id } = await Promise.resolve(params);
 
   let data;
   try {

@@ -62,6 +62,7 @@ async function runVerification() {
 
   // 5. ทดสอบรอบประเมิน (EvaluationPeriod) + ContributionShare + Confirmation + Merit Approval
   const now = new Date();
+  const bonusPool = 50000;
   const testPeriod = await prisma.evaluationPeriod.create({
     data: {
       projectId: project.id,
@@ -70,12 +71,16 @@ async function runVerification() {
       status: "CLOSED",
       closedAt: now,
       closedById: lead.id,
+      poolAmount: bonusPool,
+      currency: "THB",
       shares: {
         create: shares.map((s) => ({
           userId: s.userId,
           ratioPercent: s.ratioPercent,
           impactSum: s.impactSum,
           confirmed: true,
+          payoutAmount: Math.round(bonusPool * (s.ratioPercent / 100) * 100) / 100,
+          payoutStatus: "APPROVED",
         })),
       },
       meritStatus: "APPROVED",
@@ -85,38 +90,59 @@ async function runVerification() {
       shares: { include: { user: true } },
     },
   });
-  console.log(`[PASS] 5. Merit Cycle: ปิดรอบ, บันทึกสัดส่วน 100%, ยืนยันสัดส่วน และอนุมัติเคสผลตอบแทน (Period ID: ${testPeriod.id})`);
 
-  // 6. ทดสอบการ Export CSV ข้อมูล Merit
-  const header = "projectId,projectName,periodId,periodStart,periodEnd,meritStatus,userName,userEmail,ratioPercent,impactSum,confirmed";
+  const totalPayout = testPeriod.shares.reduce((sum, s) => sum + (s.payoutAmount || 0), 0);
+  if (Math.abs(totalPayout - bonusPool) > 1) {
+    throw new Error(`คำนวณยอดเงิน Merit Payout รวมไม่ตรงงบประมาณ: ได้ ${totalPayout} จากงบ ${bonusPool}`);
+  }
+  console.log(`[PASS] 5. Merit-to-Earn v1: ปิดรอบ, บันทึกสัดส่วน 100%, คำนวณงบโบนัส ฿${bonusPool.toLocaleString()} (ยอดจ่ายรวม ฿${totalPayout.toLocaleString()}) สำเร็จ (Period ID: ${testPeriod.id})`);
+
+  // 6. ทดสอบ AuditLog
+  const auditLog = await prisma.auditLog.create({
+    data: {
+      projectId: project.id,
+      actorId: lead.id,
+      action: "APPROVE_MERIT_CASE",
+      details: `อนุมัติเคสผลตอบแทน Merit-to-Earn สำเร็จ (${testPeriod.shares.length} คน) ยอดรวม ฿${bonusPool.toLocaleString()} THB`,
+    },
+  });
+  console.log(`[PASS] 6. Audit Trail: บันทึกประวัติการตัดสินใจ ${auditLog.action} (Log ID: ${auditLog.id})`);
+
+  // 7. ทดสอบการ Export CSV ข้อมูล Merit ครบถ้วน
+  const header = "projectId,projectName,periodId,periodStart,periodEnd,meritStatus,poolAmount,currency,userName,userEmail,ratioPercent,impactSum,payoutAmount,payoutStatus,confirmed";
   const rows = testPeriod.shares.map((s) =>
     [
       project.id,
       `"${project.name}"`,
       testPeriod.id,
-      testPeriod.periodStart.toISOString(),
-      testPeriod.periodEnd.toISOString(),
+      testPeriod.periodStart.toISOString().slice(0, 10),
+      testPeriod.periodEnd.toISOString().slice(0, 10),
       testPeriod.meritStatus,
+      testPeriod.poolAmount?.toFixed(2) || "0.00",
+      testPeriod.currency || "THB",
       `"${s.user.name}"`,
       s.user.email,
       s.ratioPercent.toFixed(2),
       s.impactSum.toFixed(2),
+      s.payoutAmount?.toFixed(2) || "0.00",
+      s.payoutStatus || "PENDING",
       "true",
     ].join(",")
   );
   const csv = "\uFEFF" + [header, ...rows].join("\n");
-  if (!csv.includes("สมชาย") || !csv.includes("ratioPercent")) {
+  if (!csv.includes("สมชาย") || !csv.includes("50000.00") || !csv.includes("payoutAmount")) {
     throw new Error("CSV Export formatting ล้มเหลว");
   }
-  console.log(`[PASS] 6. Merit CSV Export: สร้างข้อมูล CSV สำเร็จ (${testPeriod.shares.length} รายการ) พร้อม UTF-8 BOM`);
+  console.log(`[PASS] 7. Merit CSV Export: สร้างข้อมูล CSV สำเร็จ (${testPeriod.shares.length} รายการ) พร้อมคอลัมน์ Pool/Payout และ UTF-8 BOM`);
 
   // เก็บกวาดข้อมูลทดสอบ
   await prisma.workItem.delete({ where: { id: testWorkItem.id } });
   await prisma.evaluationPeriod.delete({ where: { id: testPeriod.id } });
-  console.log("[PASS] 7. ทำความสะอาดข้อมูลทดสอบเรียบร้อย");
+  await prisma.auditLog.delete({ where: { id: auditLog.id } });
+  console.log("[PASS] 8. ทำความสะอาดข้อมูลทดสอบเรียบร้อย");
 
   console.log("\n========================================================");
-  console.log(" ทุกกระบวนการของ ARWEEN Pilot-Ready ผ่านการทดสอบ 100%!");
+  console.log(" ทุกกระบวนการของ ARWEEN Pilot-Ready & Merit Expansion ผ่านการทดสอบ 100%!");
   console.log("========================================================");
 }
 

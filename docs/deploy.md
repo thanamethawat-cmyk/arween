@@ -22,7 +22,7 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/arween?schema=public
 NEXTAUTH_SECRET=change-me-to-a-long-random-string
 NEXTAUTH_URL=http://localhost:3000
 GEMINI_API_KEY=your-key
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3.6-flash
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 ```

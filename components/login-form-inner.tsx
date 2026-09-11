@@ -173,6 +173,44 @@ export default function LoginFormInner({
           >
             {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบด้วยอีเมล"}
           </Button>
+
+          <div className="pt-2 border-t border-border/60">
+            <p className="text-[11px] font-medium text-muted-foreground mb-1.5 text-center">
+              บัญชีนำร่องสำหรับทดสอบ (คลิกเพื่อกรอกอัตโนมัติ):
+            </p>
+            <div className="grid grid-cols-3 gap-1.5 text-[11px]">
+              <button
+                type="button"
+                className="rounded border border-border/80 p-1 text-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setEmail("lead@arween.demo");
+                  setPassword("demo1234");
+                }}
+              >
+                🎯 สาธิตเดิม
+              </button>
+              <button
+                type="button"
+                className="rounded border border-border/80 p-1 text-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setEmail("eng.lead@arween.demo");
+                  setPassword("demo1234");
+                }}
+              >
+                🛠️ ทีมเทคนิค
+              </button>
+              <button
+                type="button"
+                className="rounded border border-border/80 p-1 text-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setEmail("ops.lead@arween.demo");
+                  setPassword("demo1234");
+                }}
+              >
+                📈 ปฏิบัติการ
+              </button>
+            </div>
+          </div>
         </form>
 
         <p className="text-center text-[11px] text-muted-foreground pt-1">

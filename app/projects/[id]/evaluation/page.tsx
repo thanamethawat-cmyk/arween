@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getEvaluationData, flagStaleDisputes } from "@/server/evaluate";
 import { ProjectNav } from "@/components/project-nav";
 import { EvaluationClient } from "@/components/evaluation-client";
-import Link from "next/link";
+import { EvaluationHeader } from "@/components/evaluation/evaluation-header";
 
 export default async function EvaluationPage({
   params,
@@ -36,17 +36,11 @@ export default async function EvaluationPage({
 
   return (
     <div className="min-h-screen bg-muted/20">
-      <header className="border-b border-border bg-background">
-        <div className="mx-auto max-w-5xl px-4 py-4">
-          <Link href="/" className="text-sm text-primary hover:underline">
-            ← กลับรายการโปรเจกต์
-          </Link>
-          <h1 className="mt-2 text-xl font-bold">{project.name}</h1>
-          <p className="text-sm text-muted-foreground">
-            ประเมินแบบเป็นกลาง — Agent 1/2/3 + ยืนยันโดยหัวหน้า
-          </p>
-        </div>
-      </header>
+      <EvaluationHeader
+        projectId={id}
+        projectName={project.name}
+        isLead={isLead}
+      />
 
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
         <ProjectNav projectId={id} />
@@ -59,6 +53,7 @@ export default async function EvaluationPage({
           disputes={data.disputes}
           members={data.members}
           periods={data.periods}
+          auditLogs={data.auditLogs}
         />
       </main>
     </div>

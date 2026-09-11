@@ -10,12 +10,12 @@ import { EvidenceClient } from "@/components/evidence-client";
 export default async function EvidencePage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id: string }> | { id: string };
 }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
 
-  const { id } = await params;
+  const { id } = await Promise.resolve(params);
 
   let data;
   try {

@@ -4,14 +4,14 @@
 
 ```env
 GEMINI_API_KEY=your-key
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3.6-flash
 ```
 
 ## เมื่อเจอ 429 / โควตาหมด
 
 1. เปิด [Google AI Studio](https://aistudio.google.com/apikey)
 2. เติมเครดิตหรือสลับโปรเจกต์ที่มีโควตา
-3. ตรวจว่า `.env` ใช้ `GEMINI_MODEL=gemini-2.0-flash`
+3. ตรวจว่า `.env` ใช้ `GEMINI_MODEL=gemini-3.6-flash`
 4. รีสตาร์ท `npm run dev`
 
 ## ตรวจสถานะ

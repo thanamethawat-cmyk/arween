@@ -39,7 +39,7 @@
 ```bash
 npm install
 cp .env.example .env
-# ใส่ GEMINI_API_KEY และตรวจ GEMINI_MODEL=gemini-2.0-flash
+# ใส่ GEMINI_API_KEY และตรวจ GEMINI_MODEL=gemini-3.6-flash
 docker compose up -d db
 npm run db:setup
 npm run dev
@@ -66,7 +66,7 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/arween?schema=public
 NEXTAUTH_SECRET=your-secret
 NEXTAUTH_URL=http://localhost:3000
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3.6-flash
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 ```
