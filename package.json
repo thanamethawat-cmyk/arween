@@ -4,14 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 -H 0.0.0.0",
-    "build": "prisma generate && next build",
+    "build": "node scripts/sync-prisma-provider.js && prisma generate && next build",
     "start": "next start -p 3000 -H 0.0.0.0",
     "lint": "next lint",
     "db:up": "docker compose up -d db",
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push",
+    "db:generate": "node scripts/sync-prisma-provider.js && prisma generate",
+    "db:push": "node scripts/sync-prisma-provider.js && prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "db:setup": "prisma db push && tsx prisma/seed.ts"
+    "db:setup": "node scripts/sync-prisma-provider.js && prisma db push && tsx prisma/seed.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",

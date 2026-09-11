@@ -11,8 +11,11 @@ if [ -z "$NEXTAUTH_SECRET" ]; then
   exit 1
 fi
 
+echo "Syncing Prisma schema provider with DATABASE_URL..."
+node /app/scripts/sync-prisma-provider.js
+
 echo "Applying Prisma schema to database..."
-npx prisma db push --skip-generate
+npx prisma db push
 
 echo "Starting ARWEEN on port ${PORT:-8080}..."
 exec node server.js
